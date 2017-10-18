@@ -1,0 +1,9 @@
+{
+   "githublist":{
+        "datasets/country-codes":null,
+        "datasets-br/state-codes":"br-state-codes",
+        "datasets-br/city-codes":null
+   },
+   "useIDX":false,
+   "useRename":true
+}
