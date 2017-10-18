@@ -39,4 +39,13 @@ PGPASSWORD=postgres psql -h localhost -U postgres trydatasets < src/step1-lib.sq
 
 ## Install with defaults
 
+...
+
+## Using with SQL
+
+All foregin CSV tables are named `tmpcsv_*`. List the `*` names  with `SELECT id,tmp_name FROM dataset.confs`.
+
+All CSV is in JSON array, at table `dataset.all`.
+
+
 

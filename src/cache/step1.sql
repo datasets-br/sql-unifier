@@ -5,7 +5,7 @@
 --
 
 	CREATE SCHEMA IF NOT EXISTS dataset;
-	DROP TABLE IF EXISTS dataset.confs;
+	DROP TABLE IF EXISTS dataset.confs CASCADE;
         CREATE TABLE dataset.confs (
 		id serial PRIMARY KEY,
 		tmp_name text,
@@ -13,6 +13,19 @@
 		kx_types text[],
 		info JSONb
 	);
+DROP TABLE IF EXISTS dataset.all CASCADE;
+CREATE TABLE dataset.all (
+  id bigserial not null primary key,
+  source int NOT NULL REFERENCES dataset.confs(id), -- on delete cascade
+  key text,  -- opcional
+  info JSONb,
+  UNIQUE(source,key)
+);
+CREATE or replace FUNCTION dataset.idconfig(text) RETURNS int AS $f$
+     SELECT id FROM dataset.confs WHERE tmp_name=$1;
+$f$ LANGUAGE SQL IMMUTABLE;
+
+
 	CREATE EXTENSION IF NOT EXISTS file_fdw;
 	-- DROP SERVER IF EXISTS csv_files CASCADE; -- danger when using with other tools.
 	CREATE SERVER csv_files FOREIGN DATA WRAPPER file_fdw;
@@ -52,6 +65,11 @@
 	     format 'csv',
 	     header 'true'
 	  );
+
+INSERT INTO dataset.all(source, info) -- falta compor a key, quando definida no json
+   SELECT dataset.idconfig('country_codes'),  jsonb_build_array( name, official_name_en, official_name_fr, iso3166_1_alpha_2, iso3166_1_alpha_3, m49, itu, marc, wmo, ds, dial, fifa, fips, gaul, ioc, iso4217_currency_alphabetic_code, iso4217_currency_country_name, iso4217_currency_minor_unit, iso4217_currency_name, iso4217_currency_numeric_code, is_independent, capital, continent, tld, languages, geoname_id, edgar   )
+   FROM tmpcsv_country_codes
+;
 	
 	 INSERT INTO dataset.confs(tmp_name,info) VALUES ('br_state_codes','{"name":"br-state-codes","path":"data/br-state-codes.csv","format":"csv","mediatype":"text/csv","rdfType":"http://schema.org/State","lang":"en","schema":{"fields":[{"name":"subdivision","description":"State-name 2-letter abbreviation (in portuguese ''sigla da unidade da federação''), ISO 3166:BR","rdfType":"https://www.wikidata.org/wiki/Q27798","type":"string","title-pt":"Subdivisão (UF)","title":"Subdivision (Federal Unit)","regex":"^[A-Z]{2,2}$"},{"name":"name_prefix","description":"Name prefix, in portuguese","rdfType-prop":"http://schema.org/name","title-pt":"Prefixo","title":"Prefix","type":"string"},{"name":"name","description":"Common name of the state, in portuguese","rdfType-prop":"http://schema.org/name","title-pt":"Nome","title":"Name","type":"string"},{"name":"id","rdfType-prop":"http://schema.org/identifier","title-pt":"ID serial","title":"Serial ID","description":"Short serial ID for subdivisions, starting from 1 (for base36 subtract 1). Historic (non-current) starting from 30.","type":"integer"},{"name":"idIBGE","description":"IBGE statdandard identifier","url":"http://www.ibge.gov.br/home/geociencias/areaterritorial/principal.shtm","title-pt":"ID IBGE","title":"ID of IBGE","type":"string"},{"name":"wdId","description":"Wikidata concept (semantic) identifier","urlTpl":"https://www.wikidata.org/wiki/{value}","title-pt":"ID Wikidata","title":"Wikidata ID","type":"string"},{"name":"lexLabel","description":"Brazilian''s LEX URN syntax translation of the official state name. Used in URLs and other contexts","url":"http://projeto.lexml.gov.br","title-pt":"Rótulo para URN-LEX","title":"Label for URN-LEX","type":"string"},{"name":"creation","description":"State official creation year","rdfType-prop":"http://schema.org/startDate","title-pt":"Ano de criação","title":"Creation year","type":"integer"},{"name":"extinction","description":"State official creation year (null for in use)","rdfType-prop":"http://schema.org/endDate","title-pt":"Ano de extinção","title":"Extinction year","type":"integer"},{"name":"category","description":"Subdivision category (see ISO 3166-2)","title-pt":"Última classificação de nível","title":"Category","type":"string"},{"name":"timeZone","description":"Time Zone standard label","rdfType":"https://www.wikidata.org/wiki/Q12143","title-pt":"Fuso horário de referência","title":"Time Zone (reference city)","type":"string"},{"name":"utcOffset","description":"UTC offset","rdfType":"https://www.wikidata.org/wiki/Q187110","title-pt":"Diferença com relação ao UTC","title":"UTC offset","type":"integer"},{"name":"utcOffset_DST","description":"UTC offset at summer (when using Daylight Saving Time - DST)","rdfType":"https://www.wikidata.org/wiki/Q187110","rdfType-ref":"https://www.wikidata.org/wiki/Q36669","title-pt":"Diferença no verão","title":"UTC offset at DST","type":"integer"},{"name":"postalCode_ranges","description":"Numeric ranges of postal codes","rdfType-ref":"https://schema.org/postalCode","title-pt":"Intervalos de CEP","title":"Postal-code ranges","type":"string"},{"name":"notes","description":"Notes about assegments, dates or changes","rdfType-prop":"http://schema.org/commentText","title-pt":"Notas","title":"Notes","type":"string"}]},"primaryKey":"id"}'::jsonb);
 	  DROP FOREIGN TABLE IF EXISTS tmpcsv_br_state_codes CASCADE; -- danger drop VIEWS
@@ -76,6 +94,11 @@
 	     format 'csv',
 	     header 'true'
 	  );
+
+INSERT INTO dataset.all(source, info) -- falta compor a key, quando definida no json
+   SELECT dataset.idconfig('br_state_codes'),  jsonb_build_array( subdivision, name_prefix, name, id, idibge, wdid, lexlabel, creation, extinction, category, timezone, utcoffset, utcoffset_dst, postalcode_ranges, notes   )
+   FROM tmpcsv_br_state_codes
+;
 	
 	 INSERT INTO dataset.confs(tmp_name,info) VALUES ('br_city_synonyms','{"name":"br-city-synonyms.csv","path":"data/br-city-synonyms.csv","format":"csv","mediatype":"text/csv","rdfType":"https://www.wikidata.org/wiki/Q42106","lang":"pt","schema":{"fields":[{"name":"state","description":"State-name 2-letter abbreviation (in portuguese ''sigla da unidade da federação''), ISO 3166:BR","rdfType":"https://www.wikidata.org/wiki/Q27798","type":"string","title-pt":"Subdivisão (UF)","title":"Subdivision (Federal Unit)","regex":"^[A-Z]{2,2}$"},{"name":"lexLabel","description":"Brazilian''s LEX URN syntax translation of the official state name. Used in URLs and other contexts","url":"http://projeto.lexml.gov.br","title-pt":"Rótulo para URN-LEX","title":"Label for URN-LEX","type":"string"},{"name":"synonym","description":"Usual synonym of the name of the city, in portuguese","rdfType-prop":"http://schema.org/name","title-pt":"Sinônimo","title":"Synonym","type":"string"},{"name":"type","description":"Synonym type","title-pt":"Tipo","title":"Type","type":"string"},{"name":"ref","description":"source of use or reference (uri or controlled name)","title-pt":"Referência de uso","title":"Source or reference","type":"string"}]},"primaryKey":["state","lexLabel"]}'::jsonb);
 	  DROP FOREIGN TABLE IF EXISTS tmpcsv_br_city_synonyms CASCADE; -- danger drop VIEWS
@@ -90,6 +113,11 @@
 	     format 'csv',
 	     header 'true'
 	  );
+
+INSERT INTO dataset.all(source, info) -- falta compor a key, quando definida no json
+   SELECT dataset.idconfig('br_city_synonyms'),  jsonb_build_array( state, lexlabel, synonym, type, ref   )
+   FROM tmpcsv_br_city_synonyms
+;
 	
 	 INSERT INTO dataset.confs(tmp_name,info) VALUES ('br_city_codes','{"name":"br-city-codes","path":"data/br-city-codes.csv","format":"csv","mediatype":"text/csv","rdfType":"http://schema.org/City","lang":"pt","schema":{"fields":[{"name":"name","description":"Official name of the city, in portuguese","rdfType-prop":"http://schema.org/name","title-pt":"Nome","title":"Name","type":"string"},{"name":"state","description":"State-name 2-letter abbreviation (in portuguese ''sigla da unidade da federação''), ISO 3166:BR","rdfType":"https://www.wikidata.org/wiki/Q27798","type":"string","title-pt":"Subdivisão (UF)","title":"Subdivision (Federal Unit)","regex":"^[A-Z]{2,2}$"},{"name":"wdId","description":"Wikidata concept (semantic) identifier","urlTpl":"https://www.wikidata.org/wiki/{value}","title-pt":"ID Wikidata","title":"Wikidata ID","type":"string"},{"name":"idIBGE","description":"IBGE statdandard identifier","url":"http://www.ibge.gov.br/home/geociencias/areaterritorial/principal.shtm","title-pt":"ID IBGE","title":"ID of IBGE","type":"string"},{"name":"lexLabel","description":"Brazilian''s LEX URN syntax translation of the official state name. Used in URLs and other contexts","url":"http://projeto.lexml.gov.br","title-pt":"Rótulo para URN-LEX","title":"Label for URN-LEX","type":"string"},{"name":"creation","description":"State official creation year","rdfType-prop":"http://schema.org/startDate","title-pt":"Ano de criação","title":"Creation year","type":"integer"},{"name":"extinction","description":"State official creation year (null for in use)","rdfType-prop":"http://schema.org/endDate","title-pt":"Ano de extinção","title":"Extinction year","type":"integer"},{"name":"postalCode_ranges","description":"Numeric ranges of postal codes","rdfType-ref":"https://schema.org/postalCode","title-pt":"Intervalos de CEP","title":"Postal-code ranges","type":"string"},{"name":"notes","description":"Notes about assegments, dates or changes","rdfType-prop":"http://schema.org/commentText","title-pt":"Notas","title":"Notes","type":"string"}]},"primaryKey":["state","lexLabel"]}'::jsonb);
 	  DROP FOREIGN TABLE IF EXISTS tmpcsv_br_city_codes CASCADE; -- danger drop VIEWS
@@ -108,4 +136,9 @@
 	     format 'csv',
 	     header 'true'
 	  );
+
+INSERT INTO dataset.all(source, info) -- falta compor a key, quando definida no json
+   SELECT dataset.idconfig('br_city_codes'),  jsonb_build_array( name, state, wdid, idibge, lexlabel, creation, extinction, postalcode_ranges, notes   )
+   FROM tmpcsv_br_city_codes
+;
 	

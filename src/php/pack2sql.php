@@ -28,7 +28,7 @@ $IDX = 0;
 
 $scriptSQL = "\n--\n-- $msg1\n-- $msg2\n--\n
 	CREATE SCHEMA IF NOT EXISTS dataset;
-	DROP TABLE IF EXISTS dataset.confs;
+	DROP TABLE IF EXISTS dataset.confs CASCADE;
         CREATE TABLE dataset.confs (
 		id serial PRIMARY KEY,
 		tmp_name text,
@@ -36,6 +36,19 @@ $scriptSQL = "\n--\n-- $msg1\n-- $msg2\n--\n
 		kx_types text[],
 		info JSONb
 	);
+DROP TABLE IF EXISTS dataset.all CASCADE;
+CREATE TABLE dataset.all (
+  id bigserial not null primary key,
+  source int NOT NULL REFERENCES dataset.confs(id), -- on delete cascade
+  key text,  -- opcional
+  info JSONb,
+  UNIQUE(source,key)
+);".'
+CREATE or replace FUNCTION dataset.idconfig(text) RETURNS int AS $f$
+     SELECT id FROM dataset.confs WHERE tmp_name=$1;
+$f$ LANGUAGE SQL IMMUTABLE;
+'."
+
 	CREATE EXTENSION IF NOT EXISTS file_fdw;
 	-- DROP SERVER IF EXISTS csv_files CASCADE; -- danger when using with other tools.
 	CREATE SERVER csv_files FOREIGN DATA WRAPPER file_fdw;
@@ -101,7 +114,8 @@ function addSQL($r,$idx) {
 	$file = "/tmp/tmpcsv/$p.csv";
 
 	$fields = [];
-	foreach($r['schema']['fields'] as $f) $fields[]=pg_defcol($f);
+        $f2 = [];
+	foreach($r['schema']['fields'] as $f) { $fields[]=pg_defcol($f); $f2[]=pg_varname($f['name']); }
 	$jsoninfo = pg_escape_string( json_encode($r,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) ); // check quotes
 	$sql = "
 	 INSERT INTO dataset.confs(tmp_name,info) VALUES ('$p','$jsoninfo'::jsonb);
@@ -112,6 +126,11 @@ function addSQL($r,$idx) {
 	     format 'csv',
 	     header 'true'
 	  );
+
+INSERT INTO dataset.all(source, info) -- falta compor a key, quando definida no json
+   SELECT dataset.idconfig('$p'),  jsonb_build_array( ".join(', ',$f2)."   )
+   FROM tmpcsv_{$p}
+;
 	";
 	return [$file,$sql];
 }
