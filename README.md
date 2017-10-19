@@ -28,7 +28,7 @@ Change the default [conf.json](conf.json) to your needs,
 pointing it to datasets of [github.com/datasets](https://github.com/datasets) or [datasets.ok.org.br](http://datasets.ok.org.br). Example: all CSVs of [country-codes](https://github.com/datasets/country-codes), of [city-codes](https://github.com/datasets-br/city-codes) and the main CSV of [state-codes](https://github.com/datasets-br/state-codes),
 ```json
 {
-   "github":{
+   "github.com":{
         "datasets/country-codes":null,
         "datasets-br/state-codes":"br-state-codes",
         "datasets-br/city-codes":null

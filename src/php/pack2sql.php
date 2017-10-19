@@ -16,7 +16,9 @@ $here = dirname(__FILE__); // ./src/php
 $STEP = 3;
 // CONFIGS at the project's conf.json
 $conf = json_decode(file_get_contents($here.'/../../conf.json'),true);
-$githubList = $conf['githublist'];
+if (!isset($conf['github.com']))
+	die("\nERROR: no conf with github.com, other are under construction.\n");
+$githubList = $conf['github.com']; // issue for future, add options to Gitlab, etc. and local
 $useIDX =     $conf['useIDX'];    // false is real name, true is tmpcsv1, tmpcsv2, etc.
 $useRename=   $conf['useRename']; // rename "ugly col. names" to ugly_col_names
 
@@ -151,6 +153,6 @@ function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
 	   CREATE VIEW $vw AS\n\t\tSELECT ". join(', ',$f3) ."\n\t\tFROM dataset.big where source=dataset.idconfig('$p') ORDER BY $pk_order;
 	  ";
 	}
-	return [$file,$sql];
+	return [$file,"\n\n-- -- -- $p -- -- --\n$sql"];
 }
 
