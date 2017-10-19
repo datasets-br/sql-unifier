@@ -74,6 +74,8 @@ All CSV lines of all CSV files was loaded in JSON arrays, at table `dataset.big`
 
 All loaded foregin CSV tables are named `tmpcsv_*`. List the `*` names  with `SELECT * FROM dataset.vw_confs_summary`.<br>You can drop all server interfaces by `DROP SERVER csv_files CASCADE`, without impact in the `dataset` schema.
 
+### Only shell and SQL
+There are no external library or language dependences. Only the *script generator* is a language-dependent module (eg. [PHP script](src/php)), all installation scripts are language-agnostic: see  [src/*.sql](src) and [src/cache](src/cache), you need only shell and `psql` (or a SQL-migration tool) to create the `dataset` SQL schema with the configurated datasets. 
 
 ##  Collabore
 
