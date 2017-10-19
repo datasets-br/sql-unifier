@@ -2,6 +2,21 @@
 
 Try all datasets in a single PostgreSQL database, plug-and-play!
 
+All datasets load and inserted in a single big table, where each CSV line was converted into a [JSON array](https://specs.frictionlessdata.io/tabular-data-resource/#json-tabular-data). In PostgreSQL 9.5+ the best way to digital preservation is the [JSONb datatype](https://www.postgresql.org/docs/current/static/datatype-json.html), so the big table of datasets is:
+
+```sql
+CREATE TABLE dataset.big (
+  id bigserial not null primary key,
+  source int NOT NULL REFERENCES dataset.confs(id) ON DELETE CASCADE,
+  key text,  -- optional
+  c JSONb,
+  UNIQUE(source,key)
+);
+```
+Each line of all CSV files is loaded into a *JSONb array*:  CSV datatype is preserved and data representation is the most efficient and compressed &mdash; with fast access, indexation and full flexibility of [JSONb functions and operators](https://www.postgresql.org/docs/current/static/functions-json.html). 
+
+The framework also offers usual relational data access by SQL VIEW, generated automatically (!) and casting original datatypes to consistent SQL datatypes, to build joins and other complex SQL expressions from the preserved datasets. 
+
 ## Simplest use (demo)
 
 If there are no special database, use `trydatasets` database. If there are no special user, etc. try with `psql -h localhost -U postgres`
