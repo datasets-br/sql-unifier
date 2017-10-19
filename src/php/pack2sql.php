@@ -13,7 +13,7 @@
 
 
 $here = dirname(__FILE__); // ./src/php
-
+$STEP = 3;
 // CONFIGS at the project's conf.json
 $conf = json_decode(file_get_contents($here.'/../../conf.json'),true);
 $githubList = $conf['githublist'];
@@ -27,28 +27,6 @@ $msg2 = "Created in ".substr(date("c", time()),0,10);
 $IDX = 0;
 
 $scriptSQL = "\n--\n-- $msg1\n-- $msg2\n--\n
-	CREATE SCHEMA IF NOT EXISTS dataset;
-	DROP TABLE IF EXISTS dataset.confs CASCADE;
-        CREATE TABLE dataset.confs (
-		id serial PRIMARY KEY,
-		tmp_name text,
-		kx_fields text[],
-		kx_types text[],
-		info JSONb
-	);
-DROP TABLE IF EXISTS dataset.all CASCADE;
-CREATE TABLE dataset.all (
-  id bigserial not null primary key,
-  source int NOT NULL REFERENCES dataset.confs(id), -- on delete cascade
-  key text,  -- opcional
-  info JSONb,
-  UNIQUE(source,key)
-);".'
-CREATE or replace FUNCTION dataset.idconfig(text) RETURNS int AS $f$
-     SELECT id FROM dataset.confs WHERE tmp_name=$1;
-$f$ LANGUAGE SQL IMMUTABLE;
-'."
-
 	CREATE EXTENSION IF NOT EXISTS file_fdw;
 	-- DROP SERVER IF EXISTS csv_files CASCADE; -- danger when using with other tools.
 	CREATE SERVER csv_files FOREIGN DATA WRAPPER file_fdw;
@@ -85,8 +63,8 @@ foreach($githubList as $prj=>$file) {
 
 $cacheFolder = "$here/../cache";  // realpath()
 if (! file_exists($cacheFolder)) mkdir($cacheFolder);
-file_put_contents("$cacheFolder/step1.sh", $scriptSH);
-file_put_contents("$cacheFolder/step1.sql", $scriptSQL);
+file_put_contents("$cacheFolder/step$STEP-1.sh", $scriptSH);
+file_put_contents("$cacheFolder/step$STEP-2.sql", $scriptSQL);
 
 fwrite(STDERR, "\n END of cache-scripts generation\n See makeTmp.* scripts at $cacheFolder\n");
 
@@ -103,10 +81,13 @@ function pg_defcol($f) { // define a table-column
 	$name  = pg_varname($f['name']);
 	$jtype = strtolower($f['type']);
 	$pgtype = isset($pgconv[$jtype])? $pgconv[$jtype]: 'text';
-	return "$name $pgtype";
+	return [$name,$pgtype];
 }
 
-function addSQL($r,$idx) {
+/**
+ * Generates script based on FOREIGN TABLE, works fine with big-data CSV.
+ */
+function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
 	global $useIDX;
 
 	$p = $useIDX? "tmpcsc$idx": pg_varname( preg_replace('#^.+/|\.\w+$#','',$r['path']) );
@@ -115,22 +96,61 @@ function addSQL($r,$idx) {
 
 	$fields = [];
         $f2 = [];
-	foreach($r['schema']['fields'] as $f) { $fields[]=pg_defcol($f); $f2[]=pg_varname($f['name']); }
+        $f3 = [];
+	$i=0;
+	$fname_to_idx = []; // for keys only, not use aux_name
+	foreach($r['schema']['fields'] as $f) {
+		list($aux_name,$aux_pgtype) = pg_defcol($f);
+		$fields[] = "$aux_name $aux_pgtype"; 
+		$f2[] = $aux_name;
+		$fname_to_idx[$f['name']] = $i;
+		$f3[$i] = "(c->>$i)::$aux_pgtype AS $aux_name";
+		$i++;
+	}
+	$usePk =false;
+	$pk_order = 'id';
+	$pk_cols = [];
+	$pk_cols1 = [];
+	$pk_names = [];
+	if (isset($r['primaryKey'])) {
+		$usePk = true;
+		$pk_names = is_array($r['primaryKey'])? $r['primaryKey']: [$r['primaryKey']];
+		foreach($pk_names as $n) {$pk_cols[] = $fname_to_idx[$n]; $pk_cols1[] = 1+$fname_to_idx[$n];}
+		$pk_order = join(",",$pk_cols1);
+	}
 	$jsoninfo = pg_escape_string( json_encode($r,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) ); // check quotes
-	$sql = "
-	 INSERT INTO dataset.confs(tmp_name,info) VALUES ('$p','$jsoninfo'::jsonb);
-	  DROP FOREIGN TABLE IF EXISTS $table CASCADE; -- danger drop VIEWS
-	  CREATE FOREIGN TABLE $table (\n\t\t". join(",\n\t\t",$fields) ."
+	$sql = '';
+	if ($useConfs) $sql .= "
+	   INSERT INTO dataset.confs(tmp_name,info) VALUES ('$p','$jsoninfo'::jsonb);
+	  ";
+	$sql .= "
+	 DROP FOREIGN TABLE IF EXISTS $table CASCADE; -- danger drop VIEWS
+	 CREATE FOREIGN TABLE $table (\n\t\t". join(",\n\t\t",$fields) ."
 	  ) SERVER csv_files OPTIONS (
 	     filename '$file',
 	     format 'csv',
 	     header 'true'
 	  );
-
-INSERT INTO dataset.all(source, info) -- falta compor a key, quando definida no json
-   SELECT dataset.idconfig('$p'),  jsonb_build_array( ".join(', ',$f2)."   )
-   FROM tmpcsv_{$p}
-;
 	";
+	if ($useAll) {
+	  $pkAtCols = $usePk? ",key": "";
+	  $pkConcat = [];
+	  foreach($pk_names as $n) $pkConcat[] = "$n::text";
+	  $pkAtSel  = $usePk? (', concat('.join(",';',",$pkConcat).')'): "";
+	  $sql .= "
+	    INSERT INTO dataset.big(source$pkAtCols, c)
+	      SELECT dataset.idconfig('$p') $pkAtSel, jsonb_build_array( ".join(', ',$f2)."   )
+	      FROM tmpcsv_{$p};
+	  ";
+	}
+	if ($useView) {
+	  $vw = "dataset.vw_$p";
+	  // falta ORDER BY x,y quando tem primary key  senao fazer 1,2,3.. conforme campos.
+	  $sql .= "
+	   DROP VIEW IF EXISTS $vw CASCADE; -- danger drop old dependents
+	   CREATE VIEW $vw AS\n\t\tSELECT ". join(', ',$f3) ."\n\t\tFROM dataset.big where source=dataset.idconfig('$p') ORDER BY $pk_order;
+	  ";
+	}
 	return [$file,$sql];
 }
+

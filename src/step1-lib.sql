@@ -1,4 +1,13 @@
 
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; -- for metaphone() and levenshtein()
+CREATE EXTENSION IF NOT EXISTS unaccent; -- for unaccent()
+
+DROP  SCHEMA lib CASCADE;
+CREATE SCHEMA lib;
+
+
+-- PUBLIC functions
+
 -- -- -- -- -- --
 -- Normalize and convert to integer-ranges, for postalCode_ranges.
 -- See section "Preparation" at README.
@@ -20,16 +29,39 @@ $f$ LANGUAGE SQL IMMUTABLE;
 
 
 -- -- -- -- -- --
--- EXTRAS from https://github.com/datasets-br/diariosOficiais/blob/master/src/step1_strut.sql
+-- LIB and extras 
+-- See https://github.com/datasets-br/diariosOficiais/blob/master/src/step1_strut.sql
 
 
-CREATE SCHEMA oficial;
 
-CREATE FUNCTION oficial.normalizeterm(
+CREATE FUNCTION lib.normalizeterm(
+	--
+	-- Converts string into standard sequence of lower-case words.
+	--
+	text,       		-- 1. input string (many words separed by spaces or punctuation)
+	text DEFAULT ' ', 	-- 2. output separator
+	int DEFAULT 320,	-- 3. max lenght of the result (system limit)
+	p_sep2 text DEFAULT ' , ' -- 4. output separator between terms
+) RETURNS text AS $f$
+  SELECT  substring(
+	LOWER(TRIM( regexp_replace(  -- for review: regex(regex()) for ` , , ` remove
+		trim(regexp_replace($1,E'[\\n\\r \\+/,;:\\(\\)\\{\\}\\[\\]="\\s ]*[\\+/,;:\\(\\)\\{\\}\\[\\]="]+[\\+/,;:\\(\\)\\{\\}\\[\\]="\\s ]*|[\\s ]+[–\\-][\\s ]+',
+				   p_sep2, 'g'),' ,'),   -- s*ps*|s-s
+		E'[\\s ;\\|"]+[\\.\'][\\s ;\\|"]+|[\\s ;\\|"]+',    -- s.s|s
+		$2,
+		'g'
+	), $2 )),
+  1,$3
+  );
+$f$ LANGUAGE SQL IMMUTABLE;
+
+
+
+CREATE FUNCTION lib.normalizeterm2(
 	text,
 	boolean DEFAULT true
 ) RETURNS text AS $f$
-   SELECT (  tlib.normalizeterm(
+   SELECT (  lib.normalizeterm(
           CASE WHEN $2 THEN substring($1 from '^[^\(\)\/;]+' ) ELSE $1 END,
 	  ' ',
 	  255,
@@ -38,14 +70,14 @@ CREATE FUNCTION oficial.normalizeterm(
 $f$ LANGUAGE SQL IMMUTABLE;
 
 
-CREATE or replace FUNCTION oficial.name2lex(
+CREATE or replace FUNCTION lib.name2lex(
   p_name text,
   p_normalize boolean DEFAULT true,
   p_cut boolean DEFAULT true
 ) RETURNS text AS $f$
    SELECT trim(replace(
 	   regexp_replace(
-	     CASE WHEN p_normalize THEN oficial.normalizeterm($1,p_cut) ELSE $1 END,
+	     CASE WHEN p_normalize THEN lib.normalizeterm2($1,p_cut) ELSE $1 END,
 	     E' d[aeo] | d[oa]s | com | para |^d[aeo] | / .+| [aeo]s | [aeo] |[\-\' ]',
 	     '.',
 	     'g'
@@ -87,7 +119,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-CREATE or replace FUNCTION oficial.br_city_id_gap(text) RETURNS int AS $f$
+CREATE or replace FUNCTION lib.br_city_id_gap(text) RETURNS int AS $f$
 -- Gap maximo de 10 conforme convenção códigos IBGE. Avaliação de balanço inspirada pela raiz quadrada:
 -- SELECT json_build_object(i,s) from (select substr(unaccent(name),1,1) as i, count(*) as n, sqrt(count(*))::int as s 
 --    from tmpcsv_cities_wiki group by 1 order by 2 desc) t;
