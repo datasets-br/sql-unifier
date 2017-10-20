@@ -64,7 +64,7 @@ CREATE FUNCTION lib.normalizeterm2(
    SELECT (  lib.normalizeterm(
           CASE WHEN $2 THEN substring($1 from '^[^\(\)\/;]+' ) ELSE $1 END,
 	  ' ',
-	  255,
+	  320,
           ' / '
    ));
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -75,7 +75,7 @@ CREATE or replace FUNCTION lib.name2lex(
   p_normalize boolean DEFAULT true,
   p_cut boolean DEFAULT true
 ) RETURNS text AS $f$
-   SELECT trim(replace(
+   SELECT unaccent(trim(replace(
 	   regexp_replace(
 	     CASE WHEN p_normalize THEN lib.normalizeterm2($1,p_cut) ELSE $1 END,
 	     E' d[aeo] | d[oa]s | com | para |^d[aeo] | / .+| [aeo]s | [aeo] |[\-\' ]',
@@ -84,7 +84,7 @@ CREATE or replace FUNCTION lib.name2lex(
 	   ),
 	   '..',
            '.'
-       ),'.')
+       ),'.'))
 $f$ LANGUAGE SQL IMMUTABLE;
 
 

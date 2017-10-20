@@ -75,7 +75,7 @@ fwrite(STDERR, "\n END of cache-scripts generation\n See makeTmp.* scripts at $c
 // LIB
 
 function pg_varname($s) {
-	return strtolower( preg_replace('/[\s\-]+/s','_',$s) );
+        return strtolower( preg_replace('#[^\w0-9]+#s', '_', iconv('utf-8','ascii//TRANSLIT',$s)) ); // \p{L}
 }
 
 function pg_defcol($f) { // define a table-column
@@ -123,7 +123,7 @@ function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
 	$jsoninfo = pg_escape_string( json_encode($r,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) ); // check quotes
 	$sql = '';
 	if ($useConfs) $sql .= "
-	   INSERT INTO dataset.confs(tmp_name,info) VALUES ('$p','$jsoninfo'::jsonb);
+	   INSERT INTO dataset.meta(tmp_name,info) VALUES ('$p','$jsoninfo'::jsonb);
 	  ";
 	$sql .= "
 	 DROP FOREIGN TABLE IF EXISTS $table CASCADE; -- danger drop VIEWS
