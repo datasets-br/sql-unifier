@@ -12,11 +12,16 @@ $here = dirname(__FILE__); // ./src/php
 $STEP = 3;
 // CONFIGS at the project's conf.json
 $conf = json_decode(file_get_contents($here.'/../../conf.json'),true);
-if (!isset($conf['github.com']))
-	die("\nERROR: no conf with github.com, other are under construction.\n");
-$githubList = $conf['github.com']; // issue for future, add options to Gitlab, etc. and local
-$useIDX =     $conf['useIDX'];    // false is real name, true is tmpcsv1, tmpcsv2, etc.
-$useRename=   $conf['useRename']; // rename "ugly col. names" to ugly_col_names
+
+$lists = [];
+if (isset($conf['github.com'])) $lists[] = 'github.com';
+if (isset($conf['local'])) $lists[] = 'local';
+// ... for future, add more lists here
+if (!count($lists))
+        die("\nERROR: no conf needs 'github.com' or 'local'.\n");
+
+$useIDX    = $conf['useIDX'];    // false is real name, true is tmpcsv1, tmpcsv2, etc.
+$useRename = $conf['useRename']; // rename "ugly col. names" to ugly_col_names
 
 
 // INITS:
@@ -34,14 +39,15 @@ $scriptSH  = "$scriptSH0\n	mkdir -p /tmp/tmpcsv \n";
 
 // MAIN:
 fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation\n");
-fwrite(STDERR, "\n CONFIGS: useIDX=$useIDX, githubList=".count($githubList)." items.\n");
 
-foreach($githubList as $prj=>$file) {
+foreach($lists as $listname) {
+  fwrite(STDERR, "\n CONFIGS: useIDX=$useIDX, count($listname)=".count($conf[$listname])." items.\n");
+  foreach($conf[$listname] as $prj=>$file) {
 	//old if (ctype_digit((string) $prj)) list($prj,$file) = [$file,'_ALL_'];
-	fwrite(STDERR, "\n Creating cache-scripts for $prj:");
-	$urlBase = "https://raw.githubusercontent.com/$prj";
-	$url = "$urlBase/master/datapackage.json";
-	$pack = json_decode( file_get_contents($url), true );
+	fwrite(STDERR, "\n Creating cache-scripts for $prj of $listname:");
+	$uriBase = ($listname=='local')? $prj: "https://raw.githubusercontent.com/$prj";
+	$uri = ($listname=='local')? "$uriBase/datapackage.json": "$uriBase/master/datapackage.json";
+	$pack = json_decode( file_get_contents($uri), true );
 	$test = [];
 	$path = '';
 	foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file) {
@@ -50,13 +56,18 @@ foreach($githubList as $prj=>$file) {
 		fwrite(STDERR, "\n\t Building table$IDX with $path.");
 		list($file2,$sql) = addSQL($r,$IDX);
 		$scriptSQL .= $sql;
-		$url = "$urlBase/master/$path";
-		$scriptSH  .= "\nwget -O $file2 -c $url";
+		if ($listname=='github.com') {
+			$url = "$uriBase/master/$path";
+			$scriptSH  .= "\nwget -O $file2 -c $url";
+		} else {
+			$scriptSH .=  "\ncp $uriBase/$path $file2";
+		}
 	} else
 		$test[] = $r['name'];
 	if (!$path)
 		fwrite(STDERR, "\n\t ERROR, no name corresponding to '$file': ".join(", ",$test)."\n");
-}
+  } // conf
+} // lists
 
 $cacheFolder = "$here/../cache";  // realpath()
 if (! file_exists($cacheFolder)) mkdir($cacheFolder);
