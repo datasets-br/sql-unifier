@@ -5,7 +5,6 @@
         "datasets-br/state-codes":"br-state-codes",
         "datasets-br/city-codes":null
    },
-   "local":{ "/home/user/sandbox/cbh-codes":null},
    "useIDX":false,
    "useRename":true
 }

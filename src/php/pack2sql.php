@@ -14,11 +14,11 @@ $STEP = 3;
 $conf = json_decode(file_get_contents($here.'/../../conf.json'),true);
 
 $lists = [];
-if (isset($conf['github.com'])) $lists[] = 'github.com';
-if (isset($conf['local'])) $lists[] = 'local';
-// ... for future, add more lists here
+foreach(['github.com','local','local-csv'] as $c)
+   if (isset($conf[$c]))
+      $lists[] = $c;
 if (!count($lists))
-        die("\nERROR: no conf needs 'github.com' or 'local'.\n");
+   die("\nERROR: no conf needs 'github.com', 'local-csv' or 'local'.\n");
 
 $useIDX    = $conf['useIDX'];    // false is real name, true is tmpcsv1, tmpcsv2, etc.
 $useRename = $conf['useRename']; // rename "ugly col. names" to ugly_col_names
@@ -36,6 +36,7 @@ $scriptSQL = "\n--\n-- $msg1\n-- $msg2\n--\n
 ";
 $scriptSH0 = "\n##\n## $msg1\n## $msg2\n##\n";
 $scriptSH  = "$scriptSH0\n	mkdir -p /tmp/tmpcsv \n";
+$scriptSH_end   = '';
 
 // MAIN:
 fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation\n");
@@ -43,14 +44,20 @@ fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation\n");
 foreach($lists as $listname) {
   fwrite(STDERR, "\n CONFIGS: useIDX=$useIDX, count($listname)=".count($conf[$listname])." items.\n");
   foreach($conf[$listname] as $prj=>$file) {
-	//old if (ctype_digit((string) $prj)) list($prj,$file) = [$file,'_ALL_'];
 	fwrite(STDERR, "\n Creating cache-scripts for $prj of $listname:");
-	$uriBase = ($listname=='local')? $prj: "https://raw.githubusercontent.com/$prj";
-	$uri = ($listname=='local')? "$uriBase/datapackage.json": "$uriBase/master/datapackage.json";
-	$pack = json_decode( file_get_contents($uri), true );
-	$test = [];
-	$path = '';
-	foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file) {
+        $path = '';
+	if ($listname=='local-csv') { // csvsql handler:
+		if ($file && $file!='big' && $file!='meta') {
+			$path=$file;
+			$scriptSH_end.="\ncsvsql --db \"$conf[db]\" --insert --db-schema dataset $file\n";
+			fwrite(STDERR,"\n\t ... using csvsql $file but not into dataset.big");
+		}
+	} else { // datapackage handler:
+         $uriBase = ($listname=='local')? $prj: "https://raw.githubusercontent.com/$prj";
+	 $uri = ($listname=='local')? "$uriBase/datapackage.json": "$uriBase/master/datapackage.json";
+	 $pack = json_decode( file_get_contents($uri), true );
+	 $test = [];
+	 foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file) {
 		$path = $r['path'];
 		$IDX++;
 		fwrite(STDERR, "\n\t Building table$IDX with $path.");
@@ -62,8 +69,9 @@ foreach($lists as $listname) {
 		} else {
 			$scriptSH .=  "\ncp $uriBase/$path $file2";
 		}
-	} else
+	 } else
 		$test[] = $r['name'];
+	 } // end handler
 	if (!$path)
 		fwrite(STDERR, "\n\t ERROR, no name corresponding to '$file': ".join(", ",$test)."\n");
   } // conf
@@ -76,6 +84,7 @@ $scriptSH .= "
   psql $conf[db] < $here/../step1-lib.sql
   psql $conf[db] < $here/../step2-strut.sql
   psql $conf[db] < $f
+  $scriptSH_end
 "; // use array steps as config
 file_put_contents($f, $scriptSQL);
 file_put_contents("$cacheFolder/make.sh", $scriptSH);
