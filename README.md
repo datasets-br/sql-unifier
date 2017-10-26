@@ -26,6 +26,7 @@ If there are no special database, create `trydatasets` database. If there are no
 ```sh
 git clone https://github.com/datasets-br/try-sql-datasets.git
 cd try-sql-datasets
+php src/php/pack2sql.php # generates cache from default conf.json
 sh src/cache/make.sh
 ```
 
