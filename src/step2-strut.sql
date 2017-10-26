@@ -1,4 +1,4 @@
-DROP SCHEMA IF EXISTS dataset CASCADE; -- danger when resuing
+DROP SCHEMA IF EXISTS dataset CASCADE; -- danger when reusing
 
 CREATE SCHEMA dataset;
 
@@ -14,9 +14,9 @@ CREATE TABLE dataset.meta (
 DROP TABLE IF EXISTS dataset.big CASCADE;
 CREATE TABLE dataset.big (
   id bigserial not null primary key,
-  source int NOT NULL REFERENCES dataset.meta(id) ON DELETE CASCADE,
-  key text,  -- opcional
-  c JSONb,
+  source int NOT NULL REFERENCES dataset.meta(id) ON DELETE CASCADE, -- Dataset ID and metadata.
+  key text,  -- Optional. Dataset primary key (converted to text).
+  c JSONb CHECK(jsonb_array_length(c)>0), -- All dataset columns here, as exact copy of CSV line!
   UNIQUE(source,key)
 );
 
@@ -29,7 +29,7 @@ $f$ LANGUAGE SQL IMMUTABLE;
 
 -- -- -- 
 
-CREATE VIEW dataset.vw_meta_summary AS 
+CREATE VIEW dataset.vw_meta_summary AS
   SELECT id, tmp_name, info->>'primaryKey' as pkey, info->>'lang' as lang,
     jsonb_array_length(info#>'{schema,fields}') as n_fields 
     -- jsonb_pretty(info) as show_info 

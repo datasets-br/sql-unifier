@@ -1,14 +1,10 @@
 <?php
 /**
  * Interpreter for datapackage (of FrictionLessData.io standards) and script (SH and SQL) generator.
- * Generate scripts at ./cache.
+ * Generate scripts at ./cache.  Need to edit the conf.json.
  *
- * USE: php src/pack2sql.php
- *
- * USING generated scripts:
- *     sh src/cache/makeTmp.sh
- *     PGPASSWORD=postgres psql -h localhost -U postgres lexvoc < src/cache/makeTmp.sql
- *
+ * USE: php src/php/pack2sql.php
+ * REUSING generated scripts:  sh src/cache/make.sh
  */
 
 
@@ -33,9 +29,8 @@ $scriptSQL = "\n--\n-- $msg1\n-- $msg2\n--\n
 	-- DROP SERVER IF EXISTS csv_files CASCADE; -- danger when using with other tools.
 	CREATE SERVER csv_files FOREIGN DATA WRAPPER file_fdw;
 ";
-$scriptSH  = "\n##\n## $msg1\n## $msg2\n##\n
-	mkdir -p /tmp/tmpcsv
-";
+$scriptSH0 = "\n##\n## $msg1\n## $msg2\n##\n";
+$scriptSH  = "$scriptSH0\n	mkdir -p /tmp/tmpcsv \n";
 
 // MAIN:
 fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation\n");
@@ -65,11 +60,17 @@ foreach($githubList as $prj=>$file) {
 
 $cacheFolder = "$here/../cache";  // realpath()
 if (! file_exists($cacheFolder)) mkdir($cacheFolder);
-file_put_contents("$cacheFolder/step$STEP-1.sh", $scriptSH);
-file_put_contents("$cacheFolder/step$STEP-2.sql", $scriptSQL);
+$f = "$cacheFolder/step$STEP-buildDatasets.sql";
+$scriptSH .= "
+  psql $conf[db] < $here/../step1-lib.sql
+  psql $conf[db] < $here/../step2-strut.sql
+  psql $conf[db] < $f
+"; // use array steps as config
+file_put_contents($f, $scriptSQL);
+file_put_contents("$cacheFolder/make.sh", $scriptSH);
 
 fwrite(STDERR, "\n END of cache-scripts generation\n See makeTmp.* scripts at $cacheFolder\n");
-
+fwrite(STDERR, "\n try the command 'sh src/cache/make.sh'\n");
 
 // // //
 // LIB
@@ -103,7 +104,7 @@ function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
 	$fname_to_idx = []; // for keys only, not use aux_name
 	foreach($r['schema']['fields'] as $f) {
 		list($aux_name,$aux_pgtype) = pg_defcol($f);
-		$fields[] = "$aux_name $aux_pgtype"; 
+		$fields[] = "$aux_name $aux_pgtype";
 		$f2[] = $aux_name;
 		$fname_to_idx[$f['name']] = $i;
 		$f3[$i] = "(c->>$i)::$aux_pgtype AS $aux_name";
@@ -155,4 +156,3 @@ function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
 	}
 	return [$file,"\n\n-- -- -- $p -- -- --\n$sql"];
 }
-
