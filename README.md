@@ -37,6 +37,13 @@ Done!  Try eg. with `psql URI` (as connection comment above) some queries:
 * same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big where dataset.idconfig('br_state_codes');`
 * same again, but using a SQL VIEW for `dataset.big` table: `SELECT * FROM vw_br_state_codes;`
 
+Minimal installation:
+
+* PostgreSQL v9.6+
+* (optional) [CSVkit](csvkit.readthedocs.io)
+
+All tested with pg9.6 in a UBUNTU 16 LTS.
+
 ## Configurating
 
 Change the default [conf.json](conf.json) to your needs,
@@ -52,11 +59,15 @@ pointing it to datasets of [github.com/datasets](https://github.com/datasets) or
    "useBig":true, "useIDX":false, "useRename":true
 }
 ```
-The `use*` flags are for create or not the big table *dataset.All*, nominate temporary tables by an index or with real dataset names, and, nominating fields, use or not an rename rule.
 
-Tested with pg9.5 in a UBUNTU 16 LTS.
+The `use*` flags are for create or not the big table *dataset.Big*; for nominate temporary tables by an index or with real dataset names; and, for nominate fields, using or not an rename rule (to avoid quotes in SQL commands).
 
-### Install with the new configuration
+To use local folder instead Github repository, add the path as `local`. When there are no `datapackage.json` descriptor in the folder, use `local-csv` to point each CSV file. For instance:
+```json
+"github.com":{ "...":"..." },
+"local":{"/home/user/sandbox/cbh-codes":null},
+"local-csv":["../test123.csv"],
+```
 
 After edit `conf.json`, run the `pack2sql` and again the sequence of init commands (supposing at root of the git),
 
@@ -66,7 +77,7 @@ rm -r /tmp/tmpcsv        # only when need to rebuild from new data in the Web
 sh src/cache/make.sh     # rebuilds CSV files by wget and rebuilds SQL
 ```
 
-## Using with SQL
+## Using with SQL and _useBig_
 
 All CSV lines of all CSV files was loaded in JSON arrays, at table `dataset.big`.
 

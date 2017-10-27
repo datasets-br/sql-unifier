@@ -18,7 +18,7 @@ CREATE DATABASE trydatasets
 \q
 ```
 
-The project is supposing standard PostgreSQL v9.5+. To create a new `src/cache/make.sh` use
+To create a new `src/cache/make.sh` afer edit [conf.json](../conf.json) use
 
 ```sh
 php src/php/pack2sql.php
