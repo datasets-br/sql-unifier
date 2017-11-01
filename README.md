@@ -92,3 +92,8 @@ There are no external library or language dependences. Only the *script generato
 
 * development: the algorithm is simple, can be any language. The reference-implamentation is PHP. See `/src/_language_` folder, at [src](src).
 * using: add [issues here](https://github.com/datasets-br/try-sql-datasets/issues).
+
+Other motivations: a comment about non-SQL tools like CSVkit, in its documentation, [csvkit sec.3](http://csvkit.readthedocs.io/en/1.0.2/tutorial/3_power_tools.html#csvsql-and-sql2csv-ultimate-power),
+
+> "Sometimes (almost always), the command-line isn’t enough. It would be crazy to try to do all your analysis using command-line tools. Often times, the correct tool for data analysis is SQL".
+
