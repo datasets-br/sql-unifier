@@ -19,7 +19,9 @@ foreach(['github.com','local','local-csv'] as $c)
       $lists[] = $c;
 if (!count($lists))
    die("\nERROR: no conf needs 'github.com', 'local-csv' or 'local'.\n");
-
+$DB = isset($conf['db'])? trim($conf['db']): '';
+if (!$DB) die("\nSEM DB!\n");
+$PSQL = "psql \"$DB\"";
 $useIDX    = $conf['useIDX'];    // false is real name, true is tmpcsv1, tmpcsv2, etc.
 $useRename = $conf['useRename']; // rename "ugly col. names" to ugly_col_names
 
@@ -39,10 +41,10 @@ $scriptSH  = "$scriptSH0\n	mkdir -p /tmp/tmpcsv \n";
 $scriptSH_end   = '';
 
 // MAIN:
-fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation\n");
+fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation");
 
 foreach($lists as $listname) {
-  fwrite(STDERR, "\n CONFIGS: useIDX=$useIDX, count($listname)=".count($conf[$listname])." items.\n");
+  fwrite(STDERR, "\n\n CONFIGS ($listname): useIDX=$useIDX, count=".count($conf[$listname])." items.\n");
   foreach($conf[$listname] as $prj=>$file) {
 	fwrite(STDERR, "\n Creating cache-scripts for $prj of $listname:");
         $path = '';
@@ -60,7 +62,7 @@ foreach($lists as $listname) {
 	 foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file) {
 		$path = $r['path'];
 		$IDX++;
-		fwrite(STDERR, "\n\t Building table$IDX with $path.");
+		fwrite(STDERR, "\n\t Building table$IDX with $path.\n\t exp. path = $uri");
 		list($file2,$sql) = addSQL($r,$IDX);
 		$scriptSQL .= $sql;
 		if ($listname=='github.com') {
@@ -81,9 +83,9 @@ $cacheFolder = "$here/../cache";  // realpath()
 if (! file_exists($cacheFolder)) mkdir($cacheFolder);
 $f = "$cacheFolder/step$STEP-buildDatasets.sql";
 $scriptSH .= "
-  psql $conf[db] < $here/../step1-lib.sql
-  psql $conf[db] < $here/../step2-strut.sql
-  psql $conf[db] < $f
+  $PSQL < $here/../step1-lib.sql
+  $PSQL < $here/../step2-strut.sql
+  $PSQL < $f
   $scriptSH_end
 "; // use array steps as config
 file_put_contents($f, $scriptSQL);

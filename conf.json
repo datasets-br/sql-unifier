@@ -1,10 +1,10 @@
 {
-   "db":"postgresql://postgres:postgres@localhost:5432/trydatasets",
+   "db": "postgresql://postgres:postgres@localhost:5432/obsjats",
+   "local":{"/home/user/sandbox/world-cities":null},
    "github.com":{
         "datasets/country-codes":null,
         "datasets-br/state-codes":"br-state-codes",
         "datasets-br/city-codes":null
    },
-   "useIDX":false,
-   "useRename":true
+   "useBig":true, "useIDX":false, "useRename":true
 }
