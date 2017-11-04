@@ -1,6 +1,5 @@
 {
-   "db": "postgresql://postgres:postgres@localhost:5432/obsjats",
-   "local":{"/home/user/sandbox/world-cities":null},
+   "db": "postgresql://postgres:postgres@localhost:5432/trydatasets",
    "github.com":{
         "datasets/country-codes":null,
         "datasets-br/state-codes":"br-state-codes",
