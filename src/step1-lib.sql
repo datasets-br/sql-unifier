@@ -34,8 +34,10 @@ $$ language SQL IMMUTABLE;
 /**
  * Percent avoiding divisions by zero when is ok to do it.
  */
-CREATE or replace FUNCTION percent(float,float) RETURNS float AS $$
-   SELECT CASE WHEN $1=0.0 OR $1 IS NULL THEN 0.0 ELSE ROUND(100.0*$1/$2)::float END
+CREATE or replace FUNCTION percent(float,float,int DEFAULT NULL) RETURNS float AS $$
+   SELECT CASE WHEN $1=0.0 OR $1 IS NULL THEN 0.0 ELSE 
+   	CASE WHEN $3 IS NOT NULL AND $3>=0 THEN ROUND(100.0*$1/$2,$3)::float ELSE 100.0*$1/$2 END 
+   END
 $$ language SQL IMMUTABLE;
 CREATE or replace FUNCTION percent(bigint,bigint) RETURNS bigint AS $$
    SELECT percent($1::float,$2::float)::bigint
