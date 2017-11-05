@@ -234,7 +234,7 @@ Example of handicraft diagram builded from automatic source-code of definitions.
 
 [ietf-language-tags|-lang:string;langtype:string;territory:string;revgendate:string;defs:integer;dftlang:boolean;file:string|ref-territory-country_codes(iso3166_1_alpha_2)]
 
-[br-state-codes|-subdivision:string;name_prefix:string;name:string;id:integer;wdid:string|ref-subdivision-country_codes(iso3166_1_alpha_2)]
+[br-state-codes|-subdivision:string;name_prefix:string;name:string;id:integer;wdid:string|refConstant-country_codes(iso3166_1_alpha_2)]
 
 [br-city-codes|-name:string;-state:string;wdid:string;idibge:string|ref-state-country_codes(subdivision)]
 
