@@ -86,6 +86,7 @@ $scriptSH .= "
   $PSQL < $here/../step1-lib.sql
   $PSQL < $here/../step2-strut.sql
   $PSQL < $f
+  $PSQL < $here/../step4-kxRefresh.sql
   $scriptSH_end
 "; // use array steps as config
 file_put_contents($f, $scriptSQL);

@@ -37,6 +37,14 @@ Done!  Try eg. with `psql URI` (as connection comment above) some queries:
 * same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big where dataset.idconfig('br_state_codes');`
 * same again, but using a SQL VIEW for `dataset.big` table: `SELECT * FROM vw_br_state_codes;`
 
+As complex example, a typical JOIN with two datasets,  [ietf_language_tags](https://github.com/datasets/language-codes/blob/master/data/ietf-language-tags.csv) and [country_codes](https://github.com/datasets/country-codes/blob/master/data/country-codes.csv)
+
+```sql
+SELECT i.*, c.official_name_en
+FROM dataset.vw_ietf_language_tags i INNER JOIN dataset.vw_country_codes c
+  ON c.iso3166_1_alpha_2=i.territory;
+```
+
 Minimal installation:
 
 * PostgreSQL v9.6+
@@ -88,6 +96,44 @@ To generate full *`dataset` schema* for an external database (to avoid to read C
 ### Only shell and SQL
 There are no external library or language dependences. Only the *script generator* is a language-dependent module (eg. [PHP script](src/php)), all installation scripts are language-agnostic: see  [src/*.sql](src) and [src/cache](src/cache), you need only shell and `psql` (or a SQL-migration tool) to create the `dataset` SQL schema with the configurated datasets.
 
+## Exporting you datasets as CSV or JSON
+The original datasets and your new (SQL-builded) datasets can be exported in many formats, main ones are CSV and JSON.
+
+Lets use summarizations (`dataset.vw_meta_summary` and `dataset.vw_meta_fields`) as example for CSV and JSON outputs.
+
+### SQL COPY TO
+
+The easyest way is to export to `/tmp/` folder by `COPY t TO '/tmp/test.csv' CSV HEADER` usual command. As all `dataset.big` fragments are SQL-VIEWs, we need to express it by a SELECT. For JSON is the same, need only to ommit the `CSV` option:
+
+```sql
+-- export vw_meta_summary as CSV:
+ COPY (SELECT * FROM dataset.vw_meta_summary) TO '/tmp/meta_summary.csv' CSV HEADER;
+-- export same content as JSON-array:
+ COPY (SELECT * FROM dataset.vw_jmeta_summary) TO '/tmp/meta_summary.json';
+
+-- export all structured vw_meta_fields as JSON-array:
+ COPY (SELECT jsonb_agg(jmeta_fields) FROM dataset.vw_jmeta_fields) TO '/tmp/meta_fields.json';
+```
+
+To pretty-JSON you need some workaround after export `SELECT jsonb_pretty(x)`, because the lines are encoded by explicit "`\n`"...
+
+1.   COPY fragment that you want. Eg. `COPY (SELECT jsonb_pretty(jsonb_agg(jmeta_fields)) FROM dataset.vw_jmeta_fields WHERE dataset_id IN (1,3)) TO '/tmp/meta_fields_1and3.json'`
+
+2.  Convert the `\n` to real line-breaks, by `sed 's/\\n/\n/g' < /tmp/meta_fields_1and3.json > myFields.json`
+
+### psql
+
+With the `psql` command you can explore powerful terminal commands, to avoid `/tmp` intermediary folder (use relative path!) or use in *pipe* to remote database or remote files, *gzip*, etc.
+
+```sh
+psql -h remotehost -d remote_mydb -U myuser -c " \
+   COPY (SELECT * FROM dataset.vw_jmeta_summary) TO STDOUT \
+   " > ./relative_path/file.json
+```
+
+Internal `psql`  commands (as `\t \a \o`) are also easy, see [this tips](https://dba.stackexchange.com/a/160311/90651).
+
+
 ##  Collabore
 
 * development: the algorithm is simple, can be any language. The reference-implamentation is PHP. See `/src/_language_` folder, at [src](src).
@@ -96,4 +142,3 @@ There are no external library or language dependences. Only the *script generato
 Other motivations: a comment about non-SQL tools like CSVkit, in its documentation, [csvkit sec.3](http://csvkit.readthedocs.io/en/1.0.2/tutorial/3_power_tools.html#csvsql-and-sql2csv-ultimate-power),
 
 > "Sometimes (almost always), the command-line isn’t enough. It would be crazy to try to do all your analysis using command-line tools. Often times, the correct tool for data analysis is SQL".
-

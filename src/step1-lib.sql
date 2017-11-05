@@ -1,6 +1,10 @@
 /**
- * Adds useful general use library (to analyse or normalize CSV cells). 
+ * (no essential functions here, revove it from project!?)
+ *
+ * Useful functions library, to analyse or normalize CSV cells.
+ *
  */
+
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; -- for metaphone() and levenshtein()
 CREATE EXTENSION IF NOT EXISTS unaccent; -- for unaccent()
 
@@ -11,7 +15,7 @@ CREATE SCHEMA lib;
 -- PUBLIC SCHEMA functions
 
 /**
- * A good workaround solution for an old problem, 
+ * A good workaround solution for an old problem,
  * @see https://stackoverflow.com/a/20934099/287948
  */
  CREATE FUNCTION ROUND(float,int) RETURNS NUMERIC AS $$
@@ -19,7 +23,7 @@ CREATE SCHEMA lib;
  $$ language SQL IMMUTABLE;
 
 /**
- * A general solution for an old problem, 
+ * A general solution for an old problem,
  * @see https://stackoverflow.com/a/20934099/287948
  */
 CREATE or replace FUNCTION ROUND(float, text, int DEFAULT 0)
@@ -31,20 +35,36 @@ RETURNS FLOAT AS $$
            END;
 $$ language SQL IMMUTABLE;
 
+
+
 /**
- * Percent avoiding divisions by zero when is ok to do it.
+ * Percent avoiding divisions by zero.
  */
-CREATE or replace FUNCTION percent(float,float,int DEFAULT NULL) RETURNS float AS $$
-   SELECT CASE WHEN $1=0.0 OR $1 IS NULL THEN 0.0 ELSE 
-   	CASE WHEN $3 IS NOT NULL AND $3>=0 THEN ROUND(100.0*$1/$2,$3)::float ELSE 100.0*$1/$2 END 
+CREATE or replace FUNCTION lib.div_percent(
+  float, float, -- a/b
+  int DEFAULT NULL, -- 0-N decimal places or NULL for full
+  boolean DEFAULT true -- returns zero when NULL inputs, else returns NULL
+) RETURNS float AS $f$
+   SELECT CASE
+      WHEN $1 IS NULL OR $2 IS NULL THEN (CASE WHEN $4 THEN 0.0 ELSE NULL END)
+      WHEN $1=0.0 THEN 0.0
+      WHEN $2=0.0 THEN 'Infinity'::float
+      ELSE CASE
+        WHEN $3 IS NOT NULL AND $3>=0 THEN ROUND(100.0*$1/$2,$3)::float
+        ELSE 100.0*$1/$2
+      END
    END
-$$ language SQL IMMUTABLE;
-CREATE or replace FUNCTION percent(bigint,bigint) RETURNS bigint AS $$
-   SELECT percent($1::float,$2::float)::bigint
-$$ language SQL IMMUTABLE;
+$f$ language SQL IMMUTABLE;
+CREATE or replace FUNCTION lib.div_percent(
+  bigint, bigint, int DEFAULT NULL
+) RETURNS float AS $wrap$
+   SELECT lib.div_percent($1::float, $2::float, $3)
+$wrap$ language SQL IMMUTABLE;
+CREATE or replace FUNCTION lib.div_percent_int(bigint,bigint) RETURNS bigint AS $wrap$
+   SELECT lib.div_percent($1::float, $2::float, 0)::bigint
+$wrap$ language SQL IMMUTABLE;
 
-
--- LIB SCHEMA functions 
+-- LIB SCHEMA functions
 -- -- -- -- -- --
 -- Normalize and convert to integer-ranges, for postalCode_ranges.
 -- See section "Preparation" at README.
@@ -85,4 +105,5 @@ CREATE or replace FUNCTION lib.normalizeterm(
   1,$3
   );
 $f$ LANGUAGE SQL IMMUTABLE;
+
 
