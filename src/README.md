@@ -216,11 +216,11 @@ Conventions with [yUML](https://yuml.me):
 
 ```
 [MyDataset1|-pk_field1:int;field2:int;field3:string;field4:array]
-[MyDataset2|-pk1_field:string;field2:int;field2:string|field2-MyDataset1(pk_field1)]
+[MyDataset2|-pk1_field:string;field2:int;field3:object|field2-MyDataset1(pk_field1)]
 
 [MyDataset1]0..1---*[MyDataset2]
 ```
-![](https://yuml.me/fdc4851f.png)
+![](https://yuml.me/7ba8f15f.png)
 
 So the our [conf.json](../conf.json) can offer also initial `[datasetName|-pk_field1:type;field2:type;...]` definitions to use with it. Set the `useYUml` flag to *true*.
 
@@ -234,12 +234,13 @@ Example of handicraft diagram builded from automatic source-code of definitions.
 
 [ietf-language-tags|-lang:string;langtype:string;territory:string;revgendate:string;defs:integer;dftlang:boolean;file:string|ref-territory-country_codes(iso3166_1_alpha_2)]
 
-[br-state-codes|-subdivision:string;name_prefix:string;name:string;id:integer;wdid:string|ref-subdivision-country_codes(BR)]
+[br-state-codes|-subdivision:string;name_prefix:string;name:string;id:integer;wdid:string|ref-subdivision-country_codes(iso3166_1_alpha_2)]
 
 [br-city-codes|-name:string;-state:string;wdid:string;idibge:string|ref-state-country_codes(subdivision)]
 
 [country-codes]1---*[ietf-language-tags]
-[country-codes]1---1[br-state-codes]
+[country-codes]BR---*[br-state-codes]
 [br-state-codes]1---1..*[br-city-codes]
 ```
-![](https://yuml.me/e3fc7897.png)
+
+![](https://yuml.me/49ab70dd.png)
