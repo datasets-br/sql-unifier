@@ -37,7 +37,9 @@ Done!  Try eg. with `psql URI` (as connection comment above) some queries:
 * same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big where dataset.idconfig('br_state_codes');`
 * same again, but using a SQL VIEW for `dataset.big` table: `SELECT * FROM vw_br_state_codes;`
 
-As complex example, a typical JOIN with two datasets,  [ietf_language_tags](https://github.com/datasets/language-codes/blob/master/data/ietf-language-tags.csv) and [country_codes](https://github.com/datasets/country-codes/blob/master/data/country-codes.csv)
+For `v*meta_*` summary functions see also [Appendix](src/README.md#appendix) with JSON output and other examples.
+
+For handling datasets in complex queries, a typical JOIN with two datasets:  [ietf_language_tags](https://github.com/datasets/language-codes/blob/master/data/ietf-language-tags.csv) and [country_codes](https://github.com/datasets/country-codes/blob/master/data/country-codes.csv),
 
 ```sql
 SELECT i.*, c.official_name_en
@@ -45,12 +47,7 @@ FROM dataset.vw_ietf_language_tags i INNER JOIN dataset.vw_country_codes c
   ON c.iso3166_1_alpha_2=i.territory;
 ```
 
-Minimal installation:
-
-* PostgreSQL v9.6+
-* (optional) [CSVkit](http://csvkit.readthedocs.io)
-
-All tested with pg9.6 in a UBUNTU 16 LTS.
+All tested with PostgreSQL v9.6 in an UBUNTU 16 LTS. [CSVkit](http://csvkit.readthedocs.io) v1.0.2.
 
 ## Configurating
 
