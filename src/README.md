@@ -104,7 +104,7 @@ As this isertions and VIEW creations was doed, you can DROP the `tmpcsv_language
 
 Reproducing some *demo* results.
 
-`SELECT * FROM dataset.vw_meta_summary`
+`SELECT * FROM dataset.vmeta_summary`
 
 id |      tmp_name       |               pkey               | lang | n_fields
 ---|---------------------|----------------------------------|------|----------
@@ -119,7 +119,7 @@ id |      tmp_name       |               pkey               | lang | n_fields
 
 ----
 
-`SELECT * FROM dataset.vw_meta_fields`
+`SELECT * FROM dataset.vmeta_fields`
 
 id |      tmp_name       |         field_name    | field_type |      field_desc
 ---|---------------------|-----------------------|------------|-------------------
@@ -141,7 +141,7 @@ id |      tmp_name       |         field_name    | field_type |      field_desc
 
 ```sql
 SELECT jsonb_pretty(jsonb_agg(jmeta_fields))
-FROM dataset.vw_jmeta_fields WHERE dataset_id IN (1,3)
+FROM dataset.vjmeta_fields WHERE dataset_id IN (1,3)
 ```
 
 ```json

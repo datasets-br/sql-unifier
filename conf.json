@@ -1,10 +1,10 @@
 {
-   "db": "postgresql://postgres:postgres@localhost:5432/trydatasets",
-   "github.com":{
-        "datasets/language-codes":null,
-        "datasets/country-codes":null,
-        "datasets-br/state-codes":"br-state-codes",
-        "datasets-br/city-codes":null
-   },
-   "useBig":true, "useIDX":false, "useRename":true, "useYUml":true
+  "db": "postgresql://postgres:postgres@localhost:5432/trydatasets",
+  "github.com":{
+    "datasets/language-codes":null,
+    "datasets/country-codes":null,
+    "datasets-br/state-codes":"br-state-codes",
+    "datasets-br/city-codes":null
+  },
+  "useBig":true, "useIDX":false, "useRename":true, "useYUml":true
 }

@@ -33,24 +33,24 @@ $f$ LANGUAGE SQL IMMUTABLE;
 -- -- --
 -- -- --
 -- VIEWS
+-- (name convention: "vw_" prefix for dataset-view, "v" prefix for main structure)
 
 
-
-CREATE VIEW dataset.vw_meta_summary_aux AS
+CREATE VIEW dataset.vmeta_summary_aux AS
   SELECT id, tmp_name, info->'primaryKey' as pkey, info->>'lang' as lang,
     jsonb_array_length(info#>'{schema,fields}') as n_fields
     -- jsonb_pretty(info) as show_info
   FROM dataset.meta
 ;
-CREATE VIEW dataset.vw_meta_summary AS
-  SELECT id, tmp_name, pkey::text, lang, n_fields FROM dataset.vw_meta_summary_aux
+CREATE VIEW dataset.vmeta_summary AS
+  SELECT id, tmp_name, pkey::text, lang, n_fields FROM dataset.vmeta_summary_aux
 ;
-CREATE VIEW dataset.vw_jmeta_summary AS
+CREATE VIEW dataset.vjmeta_summary AS
   SELECT jsonb_agg(to_jsonb(v)) AS jmeta_summary
-	FROM dataset.vw_meta_summary_aux v
+	FROM dataset.vmeta_summary_aux v
 ;
 
-CREATE VIEW dataset.vw_meta_fields AS
+CREATE VIEW dataset.vmeta_fields AS
   SELECT id, tmp_name, f->>'name' as field_name, f->>'type' as field_type,
          f->>'description' as field_desc
   FROM (
@@ -58,15 +58,15 @@ CREATE VIEW dataset.vw_meta_fields AS
     FROM dataset.meta
   ) t
 ;
-CREATE VIEW dataset.vw_jmeta_fields AS
-  -- use SELECT jsonb_agg(jmeta_fields) as j FROM dataset.vw_jmeta_fields WHERE dataset_id IN (1,3);
+CREATE VIEW dataset.vjmeta_fields AS
+  -- use SELECT jsonb_agg(jmeta_fields) as j FROM dataset.vjmeta_fields WHERE dataset_id IN (1,3);
 	SELECT id AS dataset_id,
 	  jsonb_build_object('dataset', dataset, 'fields', json_agg(field)) AS jmeta_fields
 	FROM (
 	  SELECT id,
 		     jsonb_build_object('id',id, 'tmp_name',tmp_name) as dataset,
 	       jsonb_build_object('field_name',field_name, 'field_type',field_type, 'field_desc',field_desc) as field
-	  FROM dataset.vw_meta_fields
+	  FROM dataset.vmeta_fields
 	) t
 	GROUP BY id, dataset
 ;

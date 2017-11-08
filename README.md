@@ -31,8 +31,8 @@ sh src/cache/make.sh
 ```
 
 Done!  Try eg. with `psql URI` (as connection comment above) some queries:
-* a summary of all saved datasets: `SELECT * FROM dataset.vw_meta_summary;`
-* a complete list of all fields:  `SELECT * FROM dataset.vw_meta_fields;`
+* a summary of all saved datasets: `SELECT * FROM dataset.vmeta_summary;`
+* a complete list of all fields:  `SELECT * FROM dataset.vmeta_fields;`
 * all brasilian states at CSV file: `SELECT * FROM tmpcsv_br_state_codes;`
 * same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big where dataset.idconfig('br_state_codes');`
 * same again, but using a SQL VIEW for `dataset.big` table: `SELECT * FROM vw_br_state_codes;`
@@ -48,7 +48,7 @@ FROM dataset.vw_ietf_language_tags i INNER JOIN dataset.vw_country_codes c
 Minimal installation:
 
 * PostgreSQL v9.6+
-* (optional) [CSVkit](csvkit.readthedocs.io)
+* (optional) [CSVkit](http://csvkit.readthedocs.io)
 
 All tested with pg9.6 in a UBUNTU 16 LTS.
 
@@ -64,18 +64,26 @@ pointing it to datasets of [github.com/datasets](https://github.com/datasets) or
         "datasets-br/state-codes":"br-state-codes",
         "datasets-br/city-codes":null
    },
+   "local-csv":{
+     "test2017":{
+       "separator":";",
+       "folder":"/home/user/mytests"
+     },
+     "otherTests":"/home/user/myOthertests"
+   },
    "useBig":true, "useIDX":false, "useRename":true
 }
 ```
 
 The `use*` flags are for create or not the big table *dataset.Big*; for nominate temporary tables by an index or with real dataset names; and, for nominate fields, using or not an rename rule (to avoid quotes in SQL commands).
 
-To use local folder instead Github repository, add the path as `local`. When there are no `datapackage.json` descriptor in the folder, use `local-csv` to point each CSV file. For instance:
+To use local folder instead Github repository, add the path as `local`. For instance:
+
 ```json
 "github.com":{ "...":"..." },
 "local":{"/home/user/sandbox/cbh-codes":null},
-"local-csv":["../test123.csv"],
 ```
+When there are no `datapackage.json` descriptor in the folder, use `local-csv` as the example above (JSON with `folder` and `separator` fields). You can also to point each CSV file directly, example: `"local-csv":["../test12.csv", "/tmp/t.csv"]`.
 
 After edit `conf.json`, run the `pack2sql` and again the sequence of init commands (supposing at root of the git),
 
@@ -89,7 +97,7 @@ sh src/cache/make.sh     # rebuilds CSV files by wget and rebuilds SQL
 
 All CSV lines of all CSV files was loaded in JSON arrays, at table `dataset.big`.
 
-All loaded foregin CSV tables are named `tmpcsv_*`. List the `*` names  with `SELECT * FROM dataset.vw_meta_summary`.<br>You can drop all server interfaces by `DROP SERVER csv_files CASCADE`, without impact in the `dataset` schema.
+All loaded foregin CSV tables are named `tmpcsv_*`. List the `*` names  with `SELECT * FROM dataset.vmeta_summary`.<br>You can drop all server interfaces by `DROP SERVER csv_files CASCADE`, without impact in the `dataset` schema.
 
 To generate full *`dataset` schema* for an external database (to avoid to read CSV or local FOREGIN TABLE), try something like `pg_dump -n dataset postgresql://postgres:postgres@localhost:5432/trydatasets > /tmp/dump_n_dataset.sql`.
 
@@ -99,25 +107,25 @@ There are no external library or language dependences. Only the *script generato
 ## Exporting you datasets as CSV or JSON
 The original datasets and your new (SQL-builded) datasets can be exported in many formats, main ones are CSV and JSON.
 
-Lets use summarizations (`dataset.vw_meta_summary` and `dataset.vw_meta_fields`) as example for CSV and JSON outputs.
+Lets use summarizations (`dataset.vmeta_summary` and `dataset.vmeta_fields`) as example for CSV and JSON outputs.
 
 ### SQL COPY TO
 
 The easyest way is to export to `/tmp/` folder by `COPY t TO '/tmp/test.csv' CSV HEADER` usual command. As all `dataset.big` fragments are SQL-VIEWs, we need to express it by a SELECT. For JSON is the same, need only to ommit the `CSV` option:
 
 ```sql
--- export vw_meta_summary as CSV:
- COPY (SELECT * FROM dataset.vw_meta_summary) TO '/tmp/meta_summary.csv' CSV HEADER;
+-- export vmeta_summary as CSV:
+ COPY (SELECT * FROM dataset.vmeta_summary) TO '/tmp/meta_summary.csv' CSV HEADER;
 -- export same content as JSON-array:
- COPY (SELECT * FROM dataset.vw_jmeta_summary) TO '/tmp/meta_summary.json';
+ COPY (SELECT * FROM dataset.vjmeta_summary) TO '/tmp/meta_summary.json';
 
--- export all structured vw_meta_fields as JSON-array:
- COPY (SELECT jsonb_agg(jmeta_fields) FROM dataset.vw_jmeta_fields) TO '/tmp/meta_fields.json';
+-- export all structured vmeta_fields as JSON-array:
+ COPY (SELECT jsonb_agg(jmeta_fields) FROM dataset.vjmeta_fields) TO '/tmp/meta_fields.json';
 ```
 
 To pretty-JSON you need some workaround after export `SELECT jsonb_pretty(x)`, because the lines are encoded by explicit "`\n`"...
 
-1.   COPY fragment that you want. Eg. `COPY (SELECT jsonb_pretty(jsonb_agg(jmeta_fields)) FROM dataset.vw_jmeta_fields WHERE dataset_id IN (1,3)) TO '/tmp/meta_fields_1and3.json'`
+1.   COPY fragment that you want. Eg. `COPY (SELECT jsonb_pretty(jsonb_agg(jmeta_fields)) FROM dataset.vjmeta_fields WHERE dataset_id IN (1,3)) TO '/tmp/meta_fields_1and3.json'`
 
 2.  Convert the `\n` to real line-breaks, by `sed 's/\\n/\n/g' < /tmp/meta_fields_1and3.json > myFields.json`
 
@@ -127,7 +135,7 @@ With the `psql` command you can explore powerful terminal commands, to avoid `/t
 
 ```sh
 psql -h remotehost -d remote_mydb -U myuser -c " \
-   COPY (SELECT * FROM dataset.vw_jmeta_summary) TO STDOUT \
+   COPY (SELECT * FROM dataset.vjmeta_summary) TO STDOUT \
    " > ./relative_path/file.json
 ```
 

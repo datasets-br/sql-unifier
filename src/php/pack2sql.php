@@ -10,6 +10,7 @@
 
 $here = dirname(__FILE__); // ./src/php
 $STEP = 3;
+$LOCALprefix = ''; //'local_'  // for local datasets, prefix as namespace
 // CONFIGS at the project's conf.json
 $conf = json_decode(file_get_contents($here.'/../../conf.json'),true);
 
@@ -41,47 +42,86 @@ $scriptSH  = "$scriptSH0\n	mkdir -p /tmp/tmpcsv \n";
 $scriptSH_end   = '';
 $scriptYUml =  $useYUml? "// $msg1\n// $msg2\n": '';
 
-// MAIN:
 fwrite(STDERR, "\n-------------\n BEGIN of cache-scripts generation");
 
+// //
+// check local:
+$localCsvConf = NULL;
+$pack_r = NULL;
+if (isset($conf['local-csv'])) {
+  $list2 = [];
+  foreach ($conf['local-csv'] as $localName=>$c) {  // expand defaults:
+    //old $c = $conf['local-csv'];
+    $c_type = is_array($c)? (has_string_keys($c)? 'a':'i'): 's';
+    $nc = ($c_type=='a')? $c: [];
+    if (!isset($nc['separator'])) $n['separator']=',';
+    if ( $c_type=='i' )   $nc['list']=$c;
+    elseif ($c_type=='s') { $c=['folder'=>$c]; $c_type='a'; }
+    if ( $c_type=='a' && isset($c['folder']) )
+      $nc['list'] = glob("$c[folder]/*.csv"); // take all files
+    elseif (!isset($nc['list'])) die("\n check conf.json local-csv, with no list no default\n");
+    $localCsvConf = $nc;
+    $localPacks = ['resources'=>[]];
+    foreach ($nc['list'] as $i=>$f) {
+      $fname = basename($f);
+      fwrite(STDERR,"\n ... Preparing local-csv $fname");
+      $r = [
+        'name'=>$fname, 'note'=> "is a local-csv automated pack",
+        'path'=> $f,    'mediatype'=>"text/csv"
+      ];
+      $r['schema'] = [];
+      $r['schema']['fields'] =  exe_csvstat_type($f,$nc['separator']);
+      $r['_tmp_separator'] = $nc['separator'];
+      $localPacks['resources'][] = $r;
+      $list2["$localName/$i"] = $f; // as $prj=>$file
+    } //end for
+  } // for-prj
+  $conf['local-csv']=$list2;
+} // if isset
+
+// // //
+// MAIN:
 foreach($lists as $listname) {
   fwrite(STDERR, "\n\n CONFIGS ($listname): useIDX=$useIDX, count=".count($conf[$listname])." items.\n");
   foreach($conf[$listname] as $prj=>$file) {
-	fwrite(STDERR, "\n Creating cache-scripts for $prj of $listname:");
-        $path = '';
-	if ($listname=='local-csv') { // csvsql handler:
-		if ($file && $file!='big' && $file!='meta') {
-			$path=$file;
-			$scriptSH_end.="\ncsvsql --db \"$conf[db]\" --insert --db-schema dataset $file\n";
-			fwrite(STDERR,"\n\t ... using csvsql $file but not into dataset.big");
-		}
-	} else { // datapackage handler:
-	 $uriBase = ($listname=='local')? $prj: "https://raw.githubusercontent.com/$prj";
-	 $uri = ($listname=='local')? "$uriBase/datapackage.json": "$uriBase/master/datapackage.json";
-	 $pack = json_decode( file_get_contents($uri), true );
-	 $test = [];
-	 foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file) {
-		 $path = $r['path'];
-		 $IDX++;
-		 fwrite(STDERR, "\n\t Building table$IDX with $path.\n\t exp. path = $uri");
-		 list($file2,$sql,$yuml) = addSQL($r,$IDX);
-		 $scriptSQL .= $sql;
-		 if ($listname=='github.com') {
-			 $url = "$uriBase/master/$path";
-			 $scriptSH  .= "\nwget -O $file2 -c $url";
-		 } else {
-			 $scriptSH .=  "\ncp $uriBase/$path $file2";
-		 }
+    if (is_array($file)) {$file = $file['folder'];} // need more settings?
+    $path = '';
+    fwrite(STDERR, "\n Creating cache-scripts for $prj of $listname:");
+    $test = [];
+    if ($listname=='local-csv') {
+      $uri = $uriBase = $uriBase2 = '';
+      $pack = $localPacks;
+    } else {
+      $uriBase = ($listname=='local')? $prj: "https://raw.githubusercontent.com/$prj";
+      $uriBase2 = "$uriBase/";
+      $uri = ($listname=='local')? "$uriBase/datapackage.json": "$uriBase/master/datapackage.json";
+      $pack = json_decode( file_get_contents($uri), true );
+    }
+    foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file || $r['path']==$file) {
+      $IDX++;
+      $sep='';
+      if (isset($r['_tmp_separator'])){
+        $sep = $r['_tmp_separator'];
+        unset($r['_tmp_separator']);
+      }
+      $path = $r['path'];
+      fwrite(STDERR, "\n\t Building table$IDX with $path."); //  \n\t exp. path = $uri");
+      list($file2,$sql,$yuml) = addSQL($r,$IDX,$sep);
+      $scriptSQL .= $sql;
+      if ($listname=='github.com') {
+       $url = "$uriBase/master/$path";
+       $scriptSH  .= "\nwget -O $file2 -c $url";
+      } else
+       $scriptSH .=  "\ncp $uriBase2$path $file2";
 	 } else // for-if
 		 $test[] = $r['name'];
-     if ($useYUml) $scriptYUml .= "\n\n[$r[name]|$yuml]";
+   if ($useYUml) $scriptYUml .= "\n\n[$r[name]|$yuml]";
+  	if (!$path)
+  		 fwrite(STDERR, "\n\t ERROR, no name corresponding to \n\t CMP '$file' != '$r[name]': \n\t".join(", ",$test)."\n");
+  } // end-for-conf
+} // end-for-lists
 
-	 } // end handler
-	if (!$path)
-		 fwrite(STDERR, "\n\t ERROR, no name corresponding to '$file': ".join(", ",$test)."\n");
-  } // conf
-} // lists
-
+// Saving files:
 $cacheFolder = "$here/../cache";  // realpath()
 if (! file_exists($cacheFolder)) mkdir($cacheFolder);
 $f = "$cacheFolder/step$STEP-buildDatasets.sql";
@@ -102,6 +142,30 @@ fwrite(STDERR, "\n try the command 'sh src/cache/make.sh'\n");
 // // //
 // LIB
 
+function has_string_keys(array $array) { // https://stackoverflow.com/a/4254008
+  return count(array_filter(array_keys($array), 'is_string')) > 0;
+}
+
+/**
+ * (can be changed to direct PHP library use)
+ * Get field-names and datatypes from CSVkit's  csvstat, as shell command.
+ * @param $f string the path+filename
+ * @param $d CSV delimiter when not ','
+ * @return array of arrays in the form [id,fieldName,fieldType]
+ */
+function exe_csvstat_type($f,$d=",",$assoc=true) {
+  $r = [];
+  exec("csvstat -d \"$d\" --type $f", $lines);  //   1. p: Text
+  foreach($lines as $l) if (preg_match('/^\s*(\d+)\.\s+(.+):\s(.+)$/su',$l,$m)) {
+    array_shift($m);
+    $m[2] = strtolower($m[2]);
+    if ($m[2]=='text') $m[2]='string';
+    $r[] = $assoc? ['id'=>$m[0], 'name'=>$m[1], 'type'=>$m[2]] : $m;
+  } // end for if
+  return $r;
+}
+
+
 function pg_varname($s) {
         return strtolower( preg_replace('#[^\w0-9]+#s', '_', iconv('utf-8','ascii//TRANSLIT',$s)) ); // \p{L}
 }
@@ -117,7 +181,7 @@ function pg_defcol($f) { // define a table-column
 /**
  * Generates script based on FOREIGN TABLE, works fine with big-data CSV.
  */
-function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
+function addSQL($r,$idx,$sep='',$useConfs=true,$useAll=true,$useView=true) {
 	global $useIDX;
 
 	$p = $useIDX? "tmpcsc$idx": pg_varname( preg_replace('#^.+/|\.\w+$#','',$r['path']) );
@@ -155,12 +219,13 @@ function addSQL($r,$idx,$useConfs=true,$useAll=true,$useView=true) {
 	if ($useConfs) $sql .= "
 	   INSERT INTO dataset.meta(tmp_name,info) VALUES ('$p','$jsoninfo'::jsonb);
 	  ";
+  $SEP = $sep? "\n	     delimiter '$sep',": '';
 	$sql .= "
 	 DROP FOREIGN TABLE IF EXISTS $table CASCADE; -- danger drop VIEWS
 	 CREATE FOREIGN TABLE $table (\n\t\t". join(",\n\t\t",$fields) ."
 	  ) SERVER csv_files OPTIONS (
 	     filename '$file',
-	     format 'csv',
+	     format 'csv',$SEP
 	     header 'true'
 	  );
 	";
