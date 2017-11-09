@@ -35,8 +35,14 @@ RETURNS FLOAT AS $$
            END;
 $$ language SQL IMMUTABLE;
 
+CREATE or replace FUNCTION jsonb_array_totext(JSONb) RETURNS text[] AS $$
+  -- workaround to convert json array into SQL text[]
+  -- ideal is PostgreSQL to (internally) convert json array into SQL-array of JSONb values
+  SELECT array_agg(x) FROM jsonb_array_elements_text($1) t(x);
+$$ language SQL IMMUTABLE;
 
-
+------------------------
+-- lIB
 /**
  * Percent avoiding divisions by zero.
  */

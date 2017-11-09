@@ -226,6 +226,32 @@ $f$ LANGUAGE plpgsql IMMUTABLE;
 
 
 
+-- -- -- ------
+-- JSONb
+
+CREATE FUNCTION dataset.jsonb_arrays(int) RETURNS JSONb AS $f$
+	SELECT jsonb_agg(x) FROM (
+			SELECT to_jsonb(kx_fields) FROM dataset.meta WHERE id=$1
+			UNION ALL
+			(SELECT c FROM dataset.big WHERE source=$1)
+		) t(x)
+$f$ language SQL IMMUTABLE;
+
+CREATE FUNCTION dataset.jsonb_arrays(text, text default NULL) RETURNS JSONb AS $wrap$
+  SELECT dataset.jsonb_arrays( dataset.meta_id($1,$2) )
+$wrap$ language SQL IMMUTABLE;
+
+-- --
+CREATE FUNCTION dataset.jsonb_objects(int) RETURNS JSONb AS $f$
+	SELECT jsonb_agg(jsonb_object(k,x))
+	FROM
+		(SELECT jsonb_array_totext(c) FROM dataset.big WHERE source=$1) b(x), -- ugly convertion, lost JSON datatype
+		(SELECT kx_fields FROM dataset.meta WHERE id=$1) t(k)
+$f$ language SQL IMMUTABLE;
+
+CREATE FUNCTION dataset.jsonb_objects(text, text default NULL) RETURNS JSONb AS $wrap$
+  SELECT dataset.jsonb_objects( dataset.meta_id($1,$2) )
+$wrap$ language SQL IMMUTABLE;
 
 -- -- -- -- -- -- --
 -- Export
@@ -259,22 +285,35 @@ $f$ language PLpgSQL;
 CREATE or replace FUNCTION dataset.export_thing(
 	p_dataset_id int,
 	p_thing text DEFAULT '',  -- nothing = vname
-	p_format text DEFAULT 'csv', -- csv, json or txt
+	p_format text DEFAULT 'csv', -- csv, json-arrays or json-objs
 	p_filename text DEFAULT NULL, -- as output
 	p_tmp boolean DEFAULT true  -- flag to use or not automatic '/tmp' as path
 ) RETURNS text AS $f$
 DECLARE
 	vname text;
 	aux text;
+	aux2 text;
 BEGIN
+	IF p_thing IS NULL THEN p_thing=''; END IF;
 	vname := dataset.viewname($1);
 	p_filename := trim(p_filename);
 	IF p_filename IS NULL OR p_filename='' THEN
 		aux := regexp_replace(vname,'^vw(\d*)','out\1');
 		p_filename:= aux || '.' || CASE WHEN p_format='csv' THEN 'csv' ELSE 'json' END;
 	END IF;
+
+	IF p_format='csv' THEN
+		aux := CASE WHEN p_thing='' THEN 'dataset.'||vname ELSE p_thing END;
+		aux := 'SELECT * FROM ' || aux;
+	ELSEIF p_format='json-arrays' THEN
+		aux := CASE WHEN p_thing='' THEN 'dataset.jsonb_arrays('|| $1 ||')' ELSE p_thing END;
+	  aux := 'SELECT '||aux;
+	ELSE -- json-objs
+		aux := CASE WHEN p_thing='' THEN 'dataset.jsonb_objects('|| $1 ||')' ELSE p_thing END;
+		aux := 'SELECT '||aux;
+	END IF;
 	RETURN dataset.copy_to(
-		'SELECT * FROM ' || CASE WHEN p_thing='' OR p_thing IS NULL THEN 'dataset.'||vname ELSE p_thing END,
+		aux,
 		p_filename,
 		p_tmp,
 		CASE WHEN p_format='csv' THEN 'CSV HEADER' ELSE '' END
@@ -282,6 +321,14 @@ BEGIN
 END
 $f$ language PLpgSQL;
 
+CREATE or replace FUNCTION dataset.export_thing(
+	p_urn text,  text DEFAULT '',  text DEFAULT 'csv',
+	text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+	SELECT dataset.export_thing( dataset.meta_id($1), $2, $3, $4, $5)
+$wrap$ language SQL IMMUTABLE;
+
+--- CSV:
 CREATE FUNCTION dataset.export_as_csv(
 	int, p_filename text DEFAULT NULL, boolean DEFAULT true
 ) RETURNS text AS $wrap$
@@ -290,5 +337,44 @@ $wrap$ language SQL IMMUTABLE;
 CREATE FUNCTION dataset.export_as_csv(
 	text, p_filename text DEFAULT NULL, boolean DEFAULT true
 ) RETURNS text AS $wrap$
-  SELECT dataset.export_thing( dataset.meta_id($1), NULL, 'csv', $2, $3)
+	SELECT dataset.export_thing( $1, NULL, 'csv', $2, $3)
 $wrap$ language SQL IMMUTABLE;
+
+---- JSON ARRAYS:
+CREATE FUNCTION dataset.export_as_jarrays(
+	int, p_filename text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+  SELECT dataset.export_thing( $1, NULL, 'json-arrays', $2, $3)
+$wrap$ language SQL IMMUTABLE;
+CREATE FUNCTION dataset.export_as_jarrays(
+	text, p_filename text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+  SELECT dataset.export_thing( $1, NULL, 'json-arrays', $2, $3)
+$wrap$ language SQL IMMUTABLE;
+
+---- JSON OBJCTS:
+CREATE FUNCTION dataset.export_as_jobjects(
+	int, p_filename text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+  SELECT dataset.export_thing( $1, NULL, 'json-objs', $2, $3)
+$wrap$ language SQL IMMUTABLE;
+CREATE FUNCTION dataset.export_as_jobjects(
+	text, p_filename text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+  SELECT dataset.export_thing( $1, NULL, 'json-objs', $2, $3)
+$wrap$ language SQL IMMUTABLE;
+
+
+CREATE or replace FUNCTION dataset.copy_to(JSONb, p_filename text, boolean DEFAULT true) RETURNS text AS $f$
+-- Is a WORKAROUND, but working fine.
+DECLARE
+	aux text;
+BEGIN
+	DROP TABLE IF EXISTS tmp_json_output;
+  CREATE TEMPORARY TABLE tmp_json_output(info JSONb);
+	INSERT INTO tmp_json_output(info) VALUES($1);
+  SELECT dataset.copy_to('SELECT info FROM tmp_json_output LIMIT 1', $2, $3) INTO aux;
+	DROP TABLE tmp_json_output;
+	RETURN aux;
+END
+$f$ language PLpgSQL;
