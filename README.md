@@ -34,8 +34,8 @@ Done!  Try eg. with `psql URI` (as connection comment above) some queries:
 * a summary of all saved datasets: `SELECT * FROM dataset.vmeta_summary;`
 * a complete list of all fields:  `SELECT * FROM dataset.vmeta_fields;`
 * all brasilian states at CSV file: `SELECT * FROM tmpcsv_br_state_codes;`
-* same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big where dataset.idconfig('br_state_codes');`
-* same again, but using a SQL VIEW for `dataset.big` table: `SELECT * FROM vw_br_state_codes;`
+* same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big WHERE dataset.meta_id('br_state_codes');`
+* same again, but using the standard SQL VIEW create for simplify `dataset.big` access: `SELECT * FROM vw_br_state_codes;`
 
 For `v*meta_*` summary functions see also [Appendix](src/README.md#appendix) with JSON output and other examples.
 

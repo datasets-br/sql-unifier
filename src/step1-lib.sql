@@ -18,7 +18,7 @@ CREATE SCHEMA lib;
  * A good workaround solution for an old problem,
  * @see https://stackoverflow.com/a/20934099/287948
  */
- CREATE FUNCTION ROUND(float,int) RETURNS NUMERIC AS $$
+ CREATE or replace FUNCTION ROUND(float,int) RETURNS NUMERIC AS $$
     SELECT ROUND($1::numeric,$2);
  $$ language SQL IMMUTABLE;
 
@@ -105,5 +105,3 @@ CREATE or replace FUNCTION lib.normalizeterm(
   1,$3
   );
 $f$ LANGUAGE SQL IMMUTABLE;
-
-

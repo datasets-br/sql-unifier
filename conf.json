@@ -6,5 +6,10 @@
     "datasets-br/state-codes":"br-state-codes",
     "datasets-br/city-codes":null
   },
+  "local-csv":{
+    "test2017":{
+      "folder":"~/gits/openCoherence/data"
+    }
+  },
   "useBig":true, "useIDX":false, "useRename":true, "useYUml":true
 }
