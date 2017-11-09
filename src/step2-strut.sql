@@ -223,3 +223,72 @@ BEGIN
   RETURN tsum;
 END;
 $f$ LANGUAGE plpgsql IMMUTABLE;
+
+
+
+
+-- -- -- -- -- -- --
+-- Export
+
+
+CREATE FUNCTION dataset.copy_to(
+	p_copyselect text, -- any select command
+	p_filename text, -- as output
+	p_tmp boolean DEFAULT true,  -- flag to use or not automatic '/tmp' as path
+	p_copytype text DEFAULT ''   -- eg. 'CSV HEADER'
+) RETURNS text AS $f$
+DECLARE
+  q_path text;
+	vwname  text;
+BEGIN
+	p_filename := trim(p_filename);
+	q_path := CASE WHEN $3 THEN '/tmp/'||$2 ELSE $2 END;
+	EXECUTE format(
+		E'COPY (%s) TO %L %s',
+		p_copyselect, q_path, p_copytype
+	);
+	RETURN format(
+		'Exported %L to %L%s',
+		lib.msgcut(p_copyselect,50),
+		q_path,
+		CASE WHEN p_copytype>'' THEN ' as '||p_copytype ELSE '' END
+	);
+END
+$f$ language PLpgSQL;
+
+CREATE or replace FUNCTION dataset.export_thing(
+	p_dataset_id int,
+	p_thing text DEFAULT '',  -- nothing = vname
+	p_format text DEFAULT 'csv', -- csv, json or txt
+	p_filename text DEFAULT NULL, -- as output
+	p_tmp boolean DEFAULT true  -- flag to use or not automatic '/tmp' as path
+) RETURNS text AS $f$
+DECLARE
+	vname text;
+	aux text;
+BEGIN
+	vname := dataset.viewname($1);
+	p_filename := trim(p_filename);
+	IF p_filename IS NULL OR p_filename='' THEN
+		aux := regexp_replace(vname,'^vw(\d*)','out\1');
+		p_filename:= aux || '.' || CASE WHEN p_format='csv' THEN 'csv' ELSE 'json' END;
+	END IF;
+	RETURN dataset.copy_to(
+		'SELECT * FROM ' || CASE WHEN p_thing='' OR p_thing IS NULL THEN 'dataset.'||vname ELSE p_thing END,
+		p_filename,
+		p_tmp,
+		CASE WHEN p_format='csv' THEN 'CSV HEADER' ELSE '' END
+	);
+END
+$f$ language PLpgSQL;
+
+CREATE FUNCTION dataset.export_as_csv(
+	int, p_filename text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+  SELECT dataset.export_thing( $1, NULL, 'csv', $2, $3)
+$wrap$ language SQL IMMUTABLE;
+CREATE FUNCTION dataset.export_as_csv(
+	text, p_filename text DEFAULT NULL, boolean DEFAULT true
+) RETURNS text AS $wrap$
+  SELECT dataset.export_thing( dataset.meta_id($1), NULL, 'csv', $2, $3)
+$wrap$ language SQL IMMUTABLE;
