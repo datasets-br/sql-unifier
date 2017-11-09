@@ -17,6 +17,17 @@ $f$ LANGUAGE SQL IMMUTABLE;
 -- -- -- --
 -- -- Tables
 
+CREATE TABLE dataset.ns(
+  -- Namespace
+  nsid  serial NOT NULL PRIMARY KEY,
+  name text NOT NULL,  -- namespace label
+  dft_lang text,  -- default lang of datasets
+  jinfo JSONB,    -- any metadata as description, etc.
+  created date DEFAULT now(),
+  UNIQUE(name)
+);
+INSERT INTO dataset.ns (name) VALUES (''); -- the default namespace!
+
 -- DROP TABLE IF EXISTS dataset.meta CASCADE;
 CREATE TABLE dataset.meta (
 	id serial PRIMARY KEY,
@@ -55,11 +66,21 @@ CREATE TABLE dataset.big (
 -- -- --
 -- Essential functions
 
-CREATE FUNCTION dataset.meta_id(text,text default '') RETURNS int AS $f$
-	SELECT id FROM dataset.meta WHERE kx_uname=$1 AND namespace=$2
+CREATE FUNCTION dataset.meta_id(text,text DEFAULT NULL) RETURNS int AS $f$
+	SELECT id
+	FROM dataset.meta
+	WHERE (CASE WHEN $2 IS NULL THEN kx_urn=$1 ELSE kx_uname=$1 AND namespace=$2 END)
 $f$ LANGUAGE SQL IMMUTABLE;
-CREATE FUNCTION dataset.meta_id_byurn(text) RETURNS int AS $f$
-	SELECT id FROM dataset.meta WHERE kx_urn=$1
+
+CREATE FUNCTION dataset.viewname(p_dataset_id int) RETURNS text AS $f$
+	-- under construction!
+  SELECT 'vw_'||kx_uname FROM dataset.meta WHERE id=$1;
+$f$ language SQL IMMUTABLE;
+
+CREATE FUNCTION dataset.viewname(text,text DEFAULT NULL) RETURNS text AS $f$
+	SELECT dataset.viewname(id)
+	FROM dataset.meta
+	WHERE (CASE WHEN $2 IS NULL THEN kx_urn=$1 ELSE kx_uname=$1 AND namespace=$2 END)
 $f$ LANGUAGE SQL IMMUTABLE;
 
 /*
@@ -70,6 +91,9 @@ $f$ LANGUAGE SQL;
 
 CREATE or replace FUNCTION dataset.meta_refresh() RETURNS TRIGGER AS $f$
 BEGIN
+	IF NOT EXISTS (SELECT 1 FROM dataset.ns WHERE name = NEW.namespace) THEN
+		RAISE EXCEPTION '(under construction) Invalid namespace: %', NEW.namespace;
+	END IF; -- future = controlling here the namespaces and kx_ns.
 	NEW.kx_uname := dataset.makekx_uname(NEW.name);
 	NEW.kx_urn   := dataset.makekx_urn(NEW.kx_uname,NEW.namespace);
 	IF NEW.info IS NOT NULL THEN
@@ -147,13 +171,18 @@ CREATE FUNCTION dataset.metaget_schema_field(
     SELECT (jsonb_array_elements($1#>'{schema,fields}')->>p_field)::text
   ) t(x)
 $f$ language SQL IMMUTABLE;
+
 CREATE FUNCTION dataset.metaget_schema_field(
-  p_name text, p_field text
+  p_id int, p_field text
 ) RETURNS text[] AS $f$
   SELECT dataset.metaget_schema_field(info,$2)
   FROM  dataset.meta
-  WHERE kx_urn=$1
+  WHERE id=$1 --kx_urn=$1
 $f$ language SQL IMMUTABLE;
+
+CREATE FUNCTION dataset.metaget_schema_field(text, text, text DEFAULT NULL) RETURNS text[] AS $wrap$
+  SELECT dataset.metaget_schema_field( dataset.meta_id($1,$3), $2 )
+$wrap$ language SQL IMMUTABLE;
 
 /**
  * Float-Sum of a slice of columns of the table dataset.big, avoiding nulls.

@@ -105,3 +105,10 @@ CREATE or replace FUNCTION lib.normalizeterm(
   1,$3
   );
 $f$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE or replace FUNCTION lib.msgcut(
+  p_msg text, p_cutAt int DEFAULT 60
+) RETURNS text AS $f$
+  SELECT CASE WHEN $1=s THEN $1 ELSE s||'...' END FROM (SELECT substring($1,1,$2)) t(s);
+$f$ LANGUAGE SQL IMMUTABLE;
