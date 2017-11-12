@@ -72,13 +72,13 @@ CREATE FUNCTION dataset.meta_id(text,text DEFAULT NULL) RETURNS int AS $f$
 	WHERE (CASE WHEN $2 IS NULL THEN kx_urn=$1 ELSE kx_uname=$1 AND namespace=$2 END)
 $f$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION dataset.viewname(p_dataset_id int) RETURNS text AS $f$
+CREATE or replace FUNCTION dataset.viewname(p_dataset_id int, istab boolean=false) RETURNS text AS $f$
 	-- under construction!
-  SELECT 'vw_'||kx_uname FROM dataset.meta WHERE id=$1;
+  SELECT CASE WHEN $2 THEN 'tmpcsv_' ELSE 'vw_' END|| kx_uname FROM dataset.meta WHERE id=$1;
 $f$ language SQL IMMUTABLE;
 
-CREATE FUNCTION dataset.viewname(text,text DEFAULT NULL) RETURNS text AS $f$
-	SELECT dataset.viewname(id)
+CREATE or replace FUNCTION dataset.viewname(text,text DEFAULT NULL,boolean DEFAULT false) RETURNS text AS $f$
+	SELECT dataset.viewname(id,$3)
 	FROM dataset.meta
 	WHERE (CASE WHEN $2 IS NULL THEN kx_urn=$1 ELSE kx_uname=$1 AND namespace=$2 END)
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -119,13 +119,15 @@ CREATE TRIGGER dataset_meta_kx  BEFORE INSERT OR UPDATE
 
 
 CREATE VIEW dataset.vmeta_summary_aux AS
-  SELECT id, kx_urn as urn, info->'primaryKey' as pkey, info->>'lang' as lang,
-    jsonb_array_length(info#>'{schema,fields}') as n_fields
+  SELECT m.id, m.kx_urn as urn, m.info->'primaryKey' as pkey, m.info->>'lang' as lang,
+    jsonb_array_length(m.info#>'{schema,fields}') as n_cols, t.n_rows
     -- jsonb_pretty(info) as show_info
-  FROM dataset.meta
+  FROM dataset.meta m,
+	LATERAL  (SELECT count(*) as n_rows FROM dataset.big WHERE source=m.id) t
 ;
 CREATE VIEW dataset.vmeta_summary AS
-  SELECT id, urn, pkey::text, lang, n_fields FROM dataset.vmeta_summary_aux
+  SELECT id, urn, pkey::text, lang, n_cols, n_rows
+	FROM dataset.vmeta_summary_aux
 ;
 CREATE VIEW dataset.vjmeta_summary AS
   SELECT jsonb_agg(to_jsonb(v)) AS jmeta_summary
@@ -376,5 +378,155 @@ BEGIN
   SELECT dataset.copy_to('SELECT info FROM tmp_json_output LIMIT 1', $2, $3) INTO aux;
 	DROP TABLE tmp_json_output;
 	RETURN aux;
+END
+$f$ language PLpgSQL;
+
+
+----------
+-----------
+
+
+CREATE or replace FUNCTION dataset.merge_into(
+	p_from_id int,
+	p_into_id int
+) RETURNS text AS $f$
+BEGIN
+	IF (select kx_types from dataset.meta where id=$1) = (select kx_types from dataset.meta where id=$2) THEN
+		UPDATE dataset.big
+		SET source=p_into_id
+		WHERE source=p_from_id;
+		DELETE FROM dataset.meta WHERE id=p_from_id;
+		RETURN 'ok';
+	ELSE
+		RETURN 'not same kx_types';
+	END IF;
+END
+$f$ language PLpgSQL;
+
+CREATE or replace FUNCTION dataset.merge_into(  int[], int ) RETURNS text AS $wrap$
+	SELECT dataset.merge_into(x,$2) FROM unnest($1) t(x)
+$wrap$ language SQL;
+CREATE or replace FUNCTION dataset.merge_into(  text, text ) RETURNS text AS $wrap$
+	SELECT dataset.merge_into(dataset.meta_id($1), dataset.meta_id($2))
+$wrap$ language SQL;
+CREATE or replace FUNCTION dataset.merge_into(  text[], text ) RETURNS text AS $wrap$
+	SELECT dataset.merge_into(x,$2) FROM unnest($1) t(x)
+$wrap$ language SQL;
+
+/**
+ * Build SQL fragments for CREATE clauses.
+ * @param p_dataset_id at dataset.meta
+ * @return array[viewName, tabName, colItems, fieldTypeItens]
+ */
+CREATE or replace FUNCTION dataset.build_sql_names(p_dataset_id int) RETURNS text[] AS $f$
+DECLARE
+	vname text;
+	tname text;
+	i int;
+	q_fields text[];
+	q_types  text[];
+	c_item   text[];
+	flditem  text[];
+	sqltype  text;
+BEGIN
+	vname := 'dataset.'||dataset.viewname($1);
+	tname := dataset.viewname($1,true);
+	SELECT lib.pg_varname(kx_fields), kx_types
+	  INTO q_fields,                  q_types
+	FROM dataset.meta WHERE id=$1;
+	IF q_types IS NULL OR q_fields IS NULL THEN
+		RAISE EXCEPTION 'No cache for view generation';
+	END IF;
+	FOR i IN 1..array_upper(q_fields,1) LOOP
+		sqltype := lib.jtype_to_sql(q_types[i]);
+		c_item[i] := ' (c->>'|| (i-1) || ')::'|| sqltype ||' AS '|| q_fields[i];
+		flditem[i] := q_fields[i] ||' '|| sqltype;
+	END LOOP;
+	RETURN array[vname, tname, array_to_string(c_item,', '), array_to_string(flditem,', '), array_to_string(q_fields,', ')];
+END
+$f$ language PLpgSQL;
+
+
+/**
+ * EXECUTE SQL clauses for drop/create VIEWs and FOREIGN TABLEs.
+ * @param p_dataset_id at dataset.meta
+ * @return array[viewName, dropView, createView, FgnName, dropFgnTab, viewFgnTab]
+ */
+CREATE or replace FUNCTION dataset.create(
+	p_dataset_id int,
+	p_filename text DEFAULT '',
+	p_useHeader boolean DEFAULT true,
+	p_delimiter text DEFAULT ',',
+	p_pkcols text  DEFAULT '',
+	p_intoSelect text DEFAULT ''  -- add do-flags array for each execute (1..5).
+) RETURNS text AS $f$
+DECLARE
+  p text[];
+	i int;
+	s text;
+BEGIN
+	p := dataset.build_sql_names($1); -- p1=vname, p2=tname, p3=c_itens, p4=tab_itens, P5=field_names
+	FOR i IN 1..2 LOOP IF p[i]>'' AND relname_exists2(p[i]) THEN
+			s := CASE WHEN i=1 THEN 'VIEW' ELSE 'FOREIGN TABLE' END;
+			EXECUTE format('DROP %s %s CASCADE;', s, p[i]);
+	END IF; END LOOP;
+
+	EXECUTE format(
+		'CREATE VIEW %s AS SELECT %s FROM dataset.big where source=%s ORDER BY id', p[1], p[3], $1
+	);
+
+	IF p_delimiter='' OR p_delimiter IS NULL THEN p_delimiter=','; END IF;
+	EXECUTE format(
+		'CREATE FOREIGN TABLE %s (%s) SERVER csv_files OPTIONS (filename %L, format %L, delimiter %L, header %L)',
+		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
+	);
+
+	IF p_intoSelect='' OR p_intoSelect IS NULL THEN
+		p_intoSelect:=format(
+			'SELECT %s%s, jsonb_build_array(%s) FROM %s',
+			$1, p_pkcols, p[5], p[2]);
+	END IF;
+	s:= CASE WHEN p_pkcols='' THEN '' ELSE ',key' END;
+	EXECUTE format( 'INSERT INTO dataset.big(source%s,c)  %s', s, p_intoSelect );
+
+	RETURN 'ok all created for id='||$1;
+END
+$f$ language PLpgSQL;
+
+CREATE or replace FUNCTION dataset.create(
+	p_urn text, text DEFAULT '', boolean DEFAULT true, text DEFAULT ',', text  DEFAULT '', text  DEFAULT ''
+) RETURNS text AS $wrap$
+	SELECT dataset.create( dataset.meta_id($1), $2, $3, $4 )
+$wrap$ language SQL IMMUTABLE;
+
+
+/**
+ * Merge two or more datasets in a new one with a new column with the dataset-id.
+ */
+CREATE or replace FUNCTION dataset.merge_tonew(
+	-- include the dataset name as new column in the merge. Clones meta from first.
+	p_ids int[],
+	p_name text -- new dataset name
+) RETURNS text AS $f$
+DECLARE
+  i int;
+	first int;
+	fist_types text[];
+	rest int[];
+	idnew int;
+BEGIN
+	first := p_ids[1];
+	rest  := p_ids[2:array_upper(p_ids,1)];
+	SELECT kx_types INTO fist_types FROM dataset.meta WHERE id=first;
+	FOREACH i IN ARRAY rest LOOP
+		IF fist_types != (SELECT kx_types FROM dataset.meta where id=i) THEN
+			RETURN 'not same kx_types, see ids: '||first ||' and '||i;
+		END IF;
+	END LOOP;
+	INSERT INTO dataset.meta(name,info) VALUES (p_name,(SELECT info FROM dataset.meta WHERE id=first));
+	idnew := dataset.meta_id(p_name);
+	-- basta fazer || [source]
+	INSERT INTO dataset.big(source, c) SELECT idnew,c FROM dataset.big WHERE source = ANY($1);
+	return 'criou o new!';
 END
 $f$ language PLpgSQL;

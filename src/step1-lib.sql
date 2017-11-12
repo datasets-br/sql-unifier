@@ -41,8 +41,45 @@ CREATE or replace FUNCTION jsonb_array_totext(JSONb) RETURNS text[] AS $$
   SELECT array_agg(x) FROM jsonb_array_elements_text($1) t(x);
 $$ language SQL IMMUTABLE;
 
+CREATE or replace FUNCTION relname_exists(text,text default 'public') RETURNS boolean AS $$
+  SELECT EXISTS (
+     SELECT 1
+     FROM   pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE  n.nspname = $2  AND c.relname = $1
+     );
+$$ language SQL IMMUTABLE;
+CREATE or replace FUNCTION relname_exists2(text,text default 'public') RETURNS boolean AS $wrap$
+  SELECT relname_exists(y[1],y[2]) -- ugly code, please review
+  FROM (
+    SELECT CASE WHEN x[2] IS NULL THEN array[x[1],$2] ELSE array[x[2],x[1]] END
+    FROM (SELECT regexp_split_to_array($1,'\.')) t(x)
+  ) t2(y)
+$wrap$ language SQL IMMUTABLE;
+
+
 ------------------------
 -- lIB
+
+CREATE or replace FUNCTION lib.jtype_to_sql(text) RETURNS text AS $f$
+	SELECT case
+		WHEN $1='string' OR $1='null' THEN 'text'
+		WHEN $1='number' THEN 'numeric'
+		WHEN $1='array' THEN 'text[]'
+		ELSE $1
+	END
+$f$ language SQL;
+
+
+CREATE or replace FUNCTION lib.pg_varname(text) RETURNS text AS $f$
+  SELECT regexp_replace(trim(regexp_replace( unaccent($1) , '[^\w0-9\(\)]+', '_', 'g'),'_'),'[\(\)_]+','_', 'g')
+	--SELECT trim(regexp_replace( unaccent($1) , '[^\w0-9]+', '_', 'g'), '_')
+$f$ language SQL;
+
+CREATE or replace FUNCTION lib.pg_varname(text[]) RETURNS text[] AS $f$
+	SELECT array_agg(lib.pg_varname(x)) FROM unnest($1) t(x);
+$f$ language SQL;
+
+
 /**
  * Percent avoiding divisions by zero.
  */

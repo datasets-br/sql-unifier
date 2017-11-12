@@ -168,9 +168,11 @@ function exe_csvstat_type($f,$d=",",$assoc=true) {
   return $r;
 }
 
-
-function pg_varname($s) {
-        return strtolower( preg_replace('#[^\w0-9]+#s', '_', iconv('utf-8','ascii//TRANSLIT',$s)) ); // \p{L}
+function pg_varname($s,$toAsc=true) {
+  if ($toAsc) //  universal variable-name:
+    return strtolower( preg_replace('#[^\w0-9]+#s', '_', iconv('utf-8','ascii//TRANSLIT',$s)) );
+  else //  reasonable column name:
+    return mb_strtolower( preg_replace('#[^\p{L}0-9\-]+#su', '_', $s), 'UTF-8' );
 }
 
 function pg_defcol($f) { // define a table-column
@@ -221,37 +223,39 @@ function addSQL($r,$idx,$sep='',$useConfs=true,$useAll=true,$useView=true) {
 	}
 	$jsoninfo = pg_escape_string( json_encode($r,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) ); // check quotes
 	$sql = '';
-	if ($useConfs) $sql .= "
+	if ($useConfs) {$sql .= "
 	   INSERT INTO dataset.meta(name,info) VALUES ('$p','$jsoninfo'::JSONb);
 	  ";
-  $SEP = $sep? "\n	     delimiter '$sep',": '';
-  $dropIt = (!$DROP_allTmp)? "\n	DROP FOREIGN TABLE IF EXISTS $table CASCADE;": '';
-	$sql .= "$dropIt
-	 CREATE FOREIGN TABLE $table (\n\t\t". join(",\n\t\t",$fields) ."
-	  ) SERVER csv_files OPTIONS (
-	     filename '$file',
-	     format 'csv',$SEP
-	     header 'true'
-	  );
-	";
-	if ($useAll) {
-	  $pkAtCols = $usePk? ",key": "";
-	  $pkConcat = [];
-	  foreach($pk_names as $n) $pkConcat[] = "$n::text";
-	  $pkAtSel  = $usePk? (', concat('.join(",';',",$pkConcat).')'): "";
-	  $sql .= "
-	    INSERT INTO dataset.big(source$pkAtCols, c)
-	      SELECT dataset.meta_id('$p') $pkAtSel, jsonb_build_array( ".join(', ',$f2)."   )
-	      FROM tmpcsv_{$p};
-	  ";
-	}
-	if ($useView) {
-	  $vw = "dataset.vw_$p";
-	  // falta ORDER BY x,y quando tem primary key  senao fazer 1,2,3.. conforme campos.
-    $dropIt = $DROP_allDaset? '': "DROP VIEW IF EXISTS $vw CASCADE;";
-	  $sql .= "$dropIt
-	   CREATE VIEW $vw AS\n\t\tSELECT ". join(', ',$f3) ."\n\t\tFROM dataset.big where source=dataset.meta_id('$p') ORDER BY $pk_order;
-	  ";
-	}
+
+    $pkConcat = [];
+    foreach($pk_names as $n) $pkConcat[] = "$n::text";
+    $pkAtSel  = $usePk? (', concat('.join(",\\';\\',",$pkConcat).')'): "";
+
+    $sql .= "SELECT dataset.create('$p', '$file', true, '$sep', E'$pkAtSel');"; // if $useView &&
+  }
+  /*
+    $SEP = $sep? "\n	     delimiter '$sep',": '';
+    $dropIt = (!$DROP_allTmp)? "\n	DROP FOREIGN TABLE IF EXISTS $table CASCADE;": '';
+  	$sql .= "$dropIt
+  	 CREATE FOREIGN TABLE $table (\n\t\t". join(",\n\t\t",$fields) ."
+  	  ) SERVER csv_files OPTIONS (
+  	     filename '$file',
+  	     format 'csv',$SEP
+  	     header 'true'
+  	  );
+  	";
+  	if ($useConfs && $useAll) {
+      //  add to dataset.populate(dataset_id,usePk,pk_names)
+  	  $pkAtCols = $usePk? ",key": "";
+  	  $pkConcat = [];
+  	  foreach($pk_names as $n) $pkConcat[] = "$n::text";
+  	  $pkAtSel  = $usePk? (', concat('.join(",';',",$pkConcat).')'): "";
+  	  $sql .= "
+  	    INSERT INTO dataset.big(source$pkAtCols, c)
+  	      SELECT dataset.meta_id('$p') $pkAtSel, jsonb_build_array( ".join(', ',$f2)."   )
+  	      FROM tmpcsv_{$p};
+  	  ";
+  	}
+  */
 	return [$file, "\n\n-- -- -- $p -- -- --\n$sql", join(';',$yfields)];
 }
