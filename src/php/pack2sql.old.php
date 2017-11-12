@@ -53,7 +53,7 @@ $pack_r = NULL;
 if (isset($conf['local-csv'])) {
   $list2 = [];
   foreach ($conf['local-csv'] as $localName=>$c) {  // expand defaults:
-    //parsing:
+    //old $c = $conf['local-csv'];
     $c_type = is_array($c)? (has_string_keys($c)? 'a':'i'): 's';
     $nc = ($c_type=='a')? $c: [];
     if (!isset($nc['separator'])) $n['separator']=',';
@@ -118,7 +118,6 @@ foreach($lists as $listname) {
 	 } else // for-if
 		 $test[] = $r['name'];
    if ($useYUml) $scriptYUml .= "\n\n[$r[name]|$yuml]";
-   // use SQL dataset.export_yUML_boxes(filename)
   	if (!$path)
   		 fwrite(STDERR, "\n\t ERROR, no name corresponding to \n\t CMP '$file' != '$r[name]': \n\t".join(", ",$test)."\n");
   } // end-for-conf
@@ -177,6 +176,13 @@ function pg_varname($s,$toAsc=true) {
     return mb_strtolower( preg_replace('#[^\p{L}0-9\-]+#su', '_', $s), 'UTF-8' );
 }
 
+function pg_defcol($f) { // define a table-column
+	$pgconv = ['integer'=>'integer','boolean'=>'boolean','number'=>'float','float'=>'float'];
+	$name  = pg_varname($f['name']);
+	$jtype = strtolower($f['type']);
+	$pgtype = isset($pgconv[$jtype])? $pgconv[$jtype]: 'text';
+	return [$name,$pgtype];
+}
 
 /**
  * Generates script based on FOREIGN TABLE, works fine with big-data CSV.
@@ -196,14 +202,27 @@ function addSQL($r,$idx,$sep='',$useConfs=true,$useAll=true,$useView=true) {
   $f3 = [];
 	$i=0;
 	$fname_to_idx = []; // for keys only, not use aux_name
-
+	foreach($r['schema']['fields'] as $f) {
+		list($aux_name,$aux_pgtype) = pg_defcol($f);
+		$fields[] = "$aux_name $aux_pgtype";
+    $yfields[] = "$aux_name:$f[type]"; // diagram not work with $f[name]
+		$f2[] = $aux_name;
+		$fname_to_idx[$f['name']] = $i;
+		$f3[$i] = "(c->>$i)::$aux_pgtype AS $aux_name";
+		$i++;
+	}
 	$usePk =false;
 	$pk_order = 'id';
 	$pk_cols = [];
 	$pk_cols1 = [];
 	$pk_names = [];
-
-	$jsoninfo = pg_escape_string( json_encode($r,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) );
+	if (isset($r['primaryKey'])) {
+		$usePk = true;
+		$pk_names = is_array($r['primaryKey'])? $r['primaryKey']: [$r['primaryKey']];
+		foreach($pk_names as $n) {$pk_cols[] = $fname_to_idx[$n]; $pk_cols1[] = 1+$fname_to_idx[$n];}
+		$pk_order = join(",",$pk_cols1);
+	}
+	$jsoninfo = pg_escape_string( json_encode($r,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) ); // check quotes
 	$sql = '';
 	if ($useConfs) {
     $sql .= "\n\tINSERT INTO dataset.meta(name,info) VALUES ('$p','$jsoninfo'::JSONb);";

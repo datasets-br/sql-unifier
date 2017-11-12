@@ -53,22 +53,55 @@ $f$ LANGUAGE plpgsql IMMUTABLE;
 -- Part 2 - internal functions for dataset-schema structures.
 -- Used in create-tables, import, export and triggers.
 
+CREATE or replace FUNCTION dataset.jget_pks(JSONb) RETURNS text[] AS $f$
+  SELECT  array_agg(k::text)
+  FROM (
+    SELECT  jsonb_array_elements( CASE
+      WHEN $1->>'primaryKey' IS NULL THEN to_jsonb(array[]::text[])
+      WHEN jsonb_typeof($1->'primaryKey')='string' THEN to_jsonb(array[$1->'primaryKey'])
+      ELSE $1->'primaryKey'
+    END )#>>'{}' as k
+  ) t
+$f$ language SQL IMMUTABLE;
+
 /**
  * Get primaryKey selectores. Input meta.info, returns array[conactPkFields,pkcols]
  */
 CREATE or replace FUNCTION dataset.metaget_schema_pk(int) RETURNS text[] AS $f$
   SELECT array[
-    COALESCE(', '||array_to_string(array_agg(k||'::text'), E'||\';\'||'), ''),
-    --COALESCE(array_to_string(array_agg((dic->k)::text::int + 1), ','), '')
-    COALESCE(array_to_string(array_agg(k), ','), '')
+    COALESCE(', '||array_to_string(ks, E'::text||\';\'||')||'::text', ''),
+    COALESCE(array_to_string(ks, ','), '')
+    -- old COALESCE(array_to_string(array_agg((dic->k)::text::int + 1), ','), '')
   ] as ret
   FROM (
-    SELECT  array_json_dic(kx_fields) as dic, jsonb_array_elements(
-      CASE WHEN jsonb_typeof(info->'primaryKey')='string' THEN to_jsonb(array[info->'primaryKey']) ELSE info->'primaryKey' END
-    )#>>'{}' as k
+    SELECT  -- old array_json_dic(kx_fields) as dic,
+          dataset.jget_pks(info) as ks
     FROM dataset.meta
     WHERE id=$1
   ) t;
+$f$ language SQL IMMUTABLE;
+
+/**
+ * To help draw UML class diagrams with yUML syntax.
+ */
+CREATE or replace FUNCTION dataset.yUML_box(int) RETURNS text AS $f$
+  SELECT format(
+    '[%s|%s]',
+    min(name),
+    array_to_string( array_agg(CASE WHEN f=any(ks) THEN '-' ELSE '' END ||f||':'||t), ';' )
+  )
+  FROM (
+    SELECT  name, dataset.jget_pks(info) as ks,
+        lib.pg_varname( unnest(kx_fields) ) f,
+        unnest(kx_types) t
+    FROM dataset.meta
+    WHERE id=$1
+  ) t
+$f$ language SQL IMMUTABLE;
+
+CREATE or replace FUNCTION dataset.yUML_box(int[]) RETURNS text AS $f$
+  SELECT array_to_string(array_agg(dataset.yUML_box_fields( x )), E'\n\n')
+  FROM unnest($1) t(x)
 $f$ language SQL IMMUTABLE;
 
 
@@ -154,6 +187,19 @@ BEGIN
 	);
 END
 $f$ language PLpgSQL;
+
+CREATE or replace FUNCTION dataset.export_yUML_boxes(
+  filename text,
+  int[] DEFAULT NULL::int[]
+) RETURNS text AS $f$
+  SELECT CASE
+    WHEN $2 IS NULL THEN
+     dataset.copy_to('SELECT dataset.yUML_box(array_agg(id)) FROM dataset.meta',$1)
+    ELSE
+     dataset.copy_to('SELECT dataset.yUML_box(array['|| array_to_string($2,',') ||']) FROM dataset.meta',$1)
+  END
+$f$ language SQL IMMUTABLE;
+
 
 CREATE or replace FUNCTION dataset.export_thing(
 	p_dataset_id int,
@@ -357,7 +403,6 @@ CREATE or replace FUNCTION dataset.create(
 	p_filename text DEFAULT '',
 	p_useHeader boolean DEFAULT true,
 	p_delimiter text DEFAULT ',',
-	p_pkcols text  DEFAULT '',
 	p_intoSelect text DEFAULT ''  -- add do-flags array for each execute (1..5).
 ) RETURNS text AS $f$
 DECLARE
@@ -382,7 +427,7 @@ BEGIN
 		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
 	);
 
-  RAISE NOTICE '-- DEBUG01 = %',format(
+  --RAISE NOTICE '-- DEBUG01 = %',format(
 		'CREATE FOREIGN TABLE %s (%s) SERVER csv_files OPTIONS (filename %L, format %L, delimiter %L, header %L)',
 		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
 	);
@@ -394,7 +439,7 @@ BEGIN
 			'SELECT %s%s, jsonb_build_array(%s) FROM %s %s',
 			$1, pk[1], p[5], p[2], s
     );
-    RAISE NOTICE '-- DEBUG02 = %', p_intoSelect;
+    --RAISE NOTICE '-- DEBUG02 = %', p_intoSelect;
 	END IF;
 	s:= CASE WHEN pk[1]='' THEN '' ELSE ',key' END;
 	EXECUTE format( 'INSERT INTO dataset.big(source%s,c)  %s', s, p_intoSelect );
