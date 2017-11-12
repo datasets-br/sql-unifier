@@ -9,7 +9,7 @@
 
 
 $here = dirname(__FILE__); // ./src/php
-$STEP = 3;
+$STEP = 4;
 $DROP_allTmp = true; // true when usede before here the DROP cascade the SERVER tmp_*
 $DROP_allDaset = true; // true when usede before here the DROP SCHEMA dataset CASCADE.
 $LOCALprefix = ''; //'local_'  // for local datasets, prefix as namespace
@@ -130,9 +130,10 @@ $f = "$cacheFolder/step$STEP-buildDatasets.sql";
 $scriptSH .= "
   $PSQL < $here/../step1-lib.sql
   $PSQL < $here/../step2-strut.sql
+  $PSQL < $here/../step3-framework.sql
   $PSQL < $f
-  $PSQL < $here/../step4-kxRefresh.sql
   $scriptSH_end
+  $PSQL -c \"SELECT * FROM dataset.vmeta_summary\"
 "; // use array steps as config
 file_put_contents($f, $scriptSQL);
 file_put_contents("$cacheFolder/make.sh", $scriptSH);

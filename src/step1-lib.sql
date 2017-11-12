@@ -57,6 +57,27 @@ CREATE or replace FUNCTION relname_exists2(text,text default 'public') RETURNS b
 $wrap$ language SQL IMMUTABLE;
 
 
+/**
+ * Build an array-dictionary to associate indexes. Use f(a)->>'name' to obtain index.
+ */
+CREATE or replace FUNCTION array_json_dic(anyarray) RETURNS JSON AS $f$
+  SELECT json_object_agg(a,ordinality)
+  FROM (
+    SELECT a, ordinality   FROM   unnest($1) WITH ORDINALITY a
+  ) t
+$f$ language SQL IMMUTABLE;
+/**
+ * Build an array-dictionary to associate indexes. Use f(a)->>'name' to obtain index.
+ */
+CREATE or replace FUNCTION array_jsonb_dic(anyarray) RETURNS JSONb AS $f$
+  SELECT jsonb_object_agg(a,ordinality)
+  FROM (
+    SELECT a, ordinality   FROM   unnest($1) WITH ORDINALITY a
+  ) t
+$f$ language SQL IMMUTABLE;
+
+
+
 ------------------------
 -- lIB
 

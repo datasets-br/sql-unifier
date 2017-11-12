@@ -1,41 +1,11 @@
 /**
- * Processing framework.
+ * Librasry of the framework. Toolkit for create, process and manipulate datasets.
+ * $f$ are functions and $wrap$ are wrap methods (overloading functions).
  */
 
 -- -- --
 -- -- --
--- Part 1 - generic handlers toolkit.
- 
--- move to here...
-
--- -- --
--- -- --
--- Part 2 - toolkit for dataset-schema structures.
- 
-/**
- * Get metadata pieces and transforms it into text-array.
- * Used in cache-refresh etc.
- */
-CREATE FUNCTION dataset.metaget_schema_field(
-  p_info JSONb, p_field text
-) RETURNS text[] AS $f$
-  SELECT array_agg(x)
-  FROM (  -- need to "cast" from record to table, to use array_agg
-    SELECT (jsonb_array_elements($1#>'{schema,fields}')->>p_field)::text
-  ) t(x)
-$f$ language SQL IMMUTABLE;
-
-CREATE FUNCTION dataset.metaget_schema_field(
-  p_id int, p_field text
-) RETURNS text[] AS $f$
-  SELECT dataset.metaget_schema_field(info,$2)
-  FROM  dataset.meta
-  WHERE id=$1 --kx_urn=$1
-$f$ language SQL IMMUTABLE;
-
-CREATE FUNCTION dataset.metaget_schema_field(text, text, text DEFAULT NULL) RETURNS text[] AS $wrap$
-  SELECT dataset.metaget_schema_field( dataset.meta_id($1,$3), $2 )
-$wrap$ language SQL IMMUTABLE;
+-- Part 1 - public handlers toolkit, for use with dataset.big selections.
 
 /**
  * Float-Sum of a slice of columns of the table dataset.big, avoiding nulls.
@@ -76,6 +46,56 @@ BEGIN
   RETURN tsum;
 END;
 $f$ LANGUAGE plpgsql IMMUTABLE;
+
+
+-- -- --
+-- -- --
+-- Part 2 - internal functions for dataset-schema structures.
+-- Used in create-tables, import, export and triggers.
+
+/**
+ * Get primaryKey selectores. Input meta.info, returns array[conactPkFields,pkcols]
+ */
+CREATE or replace FUNCTION dataset.metaget_schema_pk(int) RETURNS text[] AS $f$
+  SELECT array[
+    COALESCE(', '||array_to_string(array_agg(k||'::text'), E'||\';\'||'), ''),
+    --COALESCE(array_to_string(array_agg((dic->k)::text::int + 1), ','), '')
+    COALESCE(array_to_string(array_agg(k), ','), '')
+  ] as ret
+  FROM (
+    SELECT  array_json_dic(kx_fields) as dic, jsonb_array_elements(
+      CASE WHEN jsonb_typeof(info->'primaryKey')='string' THEN to_jsonb(array[info->'primaryKey']) ELSE info->'primaryKey' END
+    )#>>'{}' as k
+    FROM dataset.meta
+    WHERE id=$1
+  ) t;
+$f$ language SQL IMMUTABLE;
+
+
+/**
+ * Get metadata pieces and transforms it into text-array.
+ * Used in cache-refresh etc. Meta.info as Datapackage.json standard.
+ */
+CREATE FUNCTION dataset.metaget_schema_field(
+  p_info JSONb, p_field text
+) RETURNS text[] AS $f$
+  SELECT array_agg(x)
+  FROM (  -- need to "cast" from record to table, to use array_agg
+    SELECT (jsonb_array_elements($1#>'{schema,fields}')->>p_field)::text
+  ) t(x)
+$f$ language SQL IMMUTABLE;
+
+CREATE FUNCTION dataset.metaget_schema_field(
+  p_id int, p_field text
+) RETURNS text[] AS $f$
+  SELECT dataset.metaget_schema_field(info,$2)
+  FROM  dataset.meta
+  WHERE id=$1 --kx_urn=$1
+$f$ language SQL IMMUTABLE;
+
+CREATE FUNCTION dataset.metaget_schema_field(text, text, text DEFAULT NULL) RETURNS text[] AS $wrap$
+  SELECT dataset.metaget_schema_field( dataset.meta_id($1,$3), $2 )
+$wrap$ language SQL IMMUTABLE;
 
 -- -- --
 -- -- --
@@ -184,38 +204,29 @@ $wrap$ language SQL IMMUTABLE;
 --- CSV:
 CREATE FUNCTION dataset.export_as_csv(
 	int, p_filename text DEFAULT NULL, boolean DEFAULT true
-) RETURNS text AS $wrap$
-  SELECT dataset.export_thing( $1, NULL, 'csv', $2, $3)
-$wrap$ language SQL IMMUTABLE;
+) RETURNS text AS $wrap$ SELECT dataset.export_thing( $1, NULL, 'csv', $2, $3) $wrap$ language SQL IMMUTABLE;
+
 CREATE FUNCTION dataset.export_as_csv(
 	text, p_filename text DEFAULT NULL, boolean DEFAULT true
-) RETURNS text AS $wrap$
-	SELECT dataset.export_thing( $1, NULL, 'csv', $2, $3)
-$wrap$ language SQL IMMUTABLE;
+) RETURNS text AS $wrap$ SELECT dataset.export_thing( $1, NULL, 'csv', $2, $3)  $wrap$ language SQL IMMUTABLE;
 
 ---- JSON ARRAYS:
 CREATE FUNCTION dataset.export_as_jarrays(
 	int, p_filename text DEFAULT NULL, boolean DEFAULT true
-) RETURNS text AS $wrap$
-  SELECT dataset.export_thing( $1, NULL, 'json-arrays', $2, $3)
-$wrap$ language SQL IMMUTABLE;
+) RETURNS text AS $wrap$ SELECT dataset.export_thing( $1, NULL, 'json-arrays', $2, $3)  $wrap$ language SQL IMMUTABLE;
+
 CREATE FUNCTION dataset.export_as_jarrays(
 	text, p_filename text DEFAULT NULL, boolean DEFAULT true
-) RETURNS text AS $wrap$
-  SELECT dataset.export_thing( $1, NULL, 'json-arrays', $2, $3)
-$wrap$ language SQL IMMUTABLE;
+) RETURNS text AS $wrap$ SELECT dataset.export_thing( $1, NULL, 'json-arrays', $2, $3)  $wrap$ language SQL IMMUTABLE;
 
 ---- JSON OBJCTS:
 CREATE FUNCTION dataset.export_as_jobjects(
 	int, p_filename text DEFAULT NULL, boolean DEFAULT true
-) RETURNS text AS $wrap$
-  SELECT dataset.export_thing( $1, NULL, 'json-objs', $2, $3)
-$wrap$ language SQL IMMUTABLE;
+) RETURNS text AS $wrap$ SELECT dataset.export_thing( $1, NULL, 'json-objs', $2, $3)  $wrap$ language SQL IMMUTABLE;
+
 CREATE FUNCTION dataset.export_as_jobjects(
 	text, p_filename text DEFAULT NULL, boolean DEFAULT true
-) RETURNS text AS $wrap$
-  SELECT dataset.export_thing( $1, NULL, 'json-objs', $2, $3)
-$wrap$ language SQL IMMUTABLE;
+) RETURNS text AS $wrap$ SELECT dataset.export_thing( $1, NULL, 'json-objs', $2, $3)  $wrap$ language SQL IMMUTABLE;
 
 
 CREATE or replace FUNCTION dataset.copy_to(JSONb, p_filename text, boolean DEFAULT true) RETURNS text AS $f$
@@ -232,13 +243,11 @@ BEGIN
 END
 $f$ language PLpgSQL;
 
-
 -- -- --
 -- -- --
 -- Part 5 - Rename and merge toolkit.
 
 -- Need to add also dataset.rename() and dataset.rename_ns  functions
-
 
 CREATE or replace FUNCTION dataset.merge_into(
 	p_from_id int,
@@ -260,18 +269,50 @@ $f$ language PLpgSQL;
 CREATE or replace FUNCTION dataset.merge_into(  int[], int ) RETURNS text AS $wrap$
 	SELECT dataset.merge_into(x,$2) FROM unnest($1) t(x)
 $wrap$ language SQL;
+
 CREATE or replace FUNCTION dataset.merge_into(  text, text ) RETURNS text AS $wrap$
 	SELECT dataset.merge_into(dataset.meta_id($1), dataset.meta_id($2))
 $wrap$ language SQL;
+
 CREATE or replace FUNCTION dataset.merge_into(  text[], text ) RETURNS text AS $wrap$
 	SELECT dataset.merge_into(x,$2) FROM unnest($1) t(x)
 $wrap$ language SQL;
+
+/**
+ * Merge two or more datasets in a new one with a new column with the dataset-id.
+ */
+CREATE or replace FUNCTION dataset.merge_tonew(
+	-- include the dataset name as new column in the merge. Clones meta from first.
+	p_ids int[],
+	p_name text -- new dataset name
+) RETURNS text AS $f$
+DECLARE
+  i int;
+	first int;
+	fist_types text[];
+	rest int[];
+	idnew int;
+BEGIN
+	first := p_ids[1];
+	rest  := p_ids[2:array_upper(p_ids,1)];
+	SELECT kx_types INTO fist_types FROM dataset.meta WHERE id=first;
+	FOREACH i IN ARRAY rest LOOP
+		IF fist_types != (SELECT kx_types FROM dataset.meta where id=i) THEN
+			RETURN 'not same kx_types, see ids: '||first ||' and '||i;
+		END IF;
+	END LOOP;
+	INSERT INTO dataset.meta(name,info) VALUES (p_name,(SELECT info FROM dataset.meta WHERE id=first));
+	idnew := dataset.meta_id(p_name);
+	-- basta fazer || [source]
+	INSERT INTO dataset.big(source, c) SELECT idnew,c FROM dataset.big WHERE source = ANY($1);
+	return 'criou o new!';
+END
+$f$ language PLpgSQL;
 
 
 -- -- --
 -- -- --
 -- Part 6 - Build structure (create clauses) toolkit.
-
 
 /**
  * Build SQL fragments for CREATE clauses.
@@ -306,7 +347,6 @@ BEGIN
 END
 $f$ language PLpgSQL;
 
-
 /**
  * EXECUTE SQL clauses for drop/create VIEWs and FOREIGN TABLEs.
  * @param p_dataset_id at dataset.meta
@@ -322,11 +362,12 @@ CREATE or replace FUNCTION dataset.create(
 ) RETURNS text AS $f$
 DECLARE
   p text[];
+  pk text[];
 	i int;
 	s text;
 BEGIN
 	p := dataset.build_sql_names($1); -- p1=vname, p2=tname, p3=c_itens, p4=tab_itens, P5=field_names
-	FOR i IN 1..2 LOOP IF p[i]>'' AND relname_exists2(p[i]) THEN
+	FOR i IN 1..2 LOOP  IF relname_exists2(p[i]) THEN  -- p[i]>'' AND
 			s := CASE WHEN i=1 THEN 'VIEW' ELSE 'FOREIGN TABLE' END;
 			EXECUTE format('DROP %s %s CASCADE;', s, p[i]);
 	END IF; END LOOP;
@@ -341,15 +382,24 @@ BEGIN
 		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
 	);
 
+  RAISE NOTICE '-- DEBUG01 = %',format(
+		'CREATE FOREIGN TABLE %s (%s) SERVER csv_files OPTIONS (filename %L, format %L, delimiter %L, header %L)',
+		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
+	);
+
+  pk := dataset.metaget_schema_pk($1); -- 1=conactPkFields,2=pkcols
 	IF p_intoSelect='' OR p_intoSelect IS NULL THEN
-		p_intoSelect:=format(
-			'SELECT %s%s, jsonb_build_array(%s) FROM %s',
-			$1, p_pkcols, p[5], p[2]);
+    s:= CASE WHEN pk[1]='' THEN '' ELSE 'ORDER BY '||pk[2] END;
+		p_intoSelect := format(
+			'SELECT %s%s, jsonb_build_array(%s) FROM %s %s',
+			$1, pk[1], p[5], p[2], s
+    );
+    RAISE NOTICE '-- DEBUG02 = %', p_intoSelect;
 	END IF;
-	s:= CASE WHEN p_pkcols='' THEN '' ELSE ',key' END;
+	s:= CASE WHEN pk[1]='' THEN '' ELSE ',key' END;
 	EXECUTE format( 'INSERT INTO dataset.big(source%s,c)  %s', s, p_intoSelect );
 
-	RETURN 'ok all created for id='||$1;
+	RETURN format('ok all created for %s (id %s)', p[1], $1);
 END
 $f$ language PLpgSQL;
 
@@ -359,35 +409,6 @@ CREATE or replace FUNCTION dataset.create(
 	SELECT dataset.create( dataset.meta_id($1), $2, $3, $4 )
 $wrap$ language SQL IMMUTABLE;
 
--- oops, move to Part 5, with merge toolkit:
-
-/**
- * Merge two or more datasets in a new one with a new column with the dataset-id.
- */
-CREATE or replace FUNCTION dataset.merge_tonew(
-	-- include the dataset name as new column in the merge. Clones meta from first.
-	p_ids int[],
-	p_name text -- new dataset name
-) RETURNS text AS $f$
-DECLARE
-  i int;
-	first int;
-	fist_types text[];
-	rest int[];
-	idnew int;
-BEGIN
-	first := p_ids[1];
-	rest  := p_ids[2:array_upper(p_ids,1)];
-	SELECT kx_types INTO fist_types FROM dataset.meta WHERE id=first;
-	FOREACH i IN ARRAY rest LOOP
-		IF fist_types != (SELECT kx_types FROM dataset.meta where id=i) THEN
-			RETURN 'not same kx_types, see ids: '||first ||' and '||i;
-		END IF;
-	END LOOP;
-	INSERT INTO dataset.meta(name,info) VALUES (p_name,(SELECT info FROM dataset.meta WHERE id=first));
-	idnew := dataset.meta_id(p_name);
-	-- basta fazer || [source]
-	INSERT INTO dataset.big(source, c) SELECT idnew,c FROM dataset.big WHERE source = ANY($1);
-	return 'criou o new!';
-END
-$f$ language PLpgSQL;
+-- -- --
+-- -- --
+-- Part 7 - Import toolkit.
