@@ -427,10 +427,6 @@ BEGIN
 		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
 	);
 
-  --RAISE NOTICE '-- DEBUG01 = %',format(
-		'CREATE FOREIGN TABLE %s (%s) SERVER csv_files OPTIONS (filename %L, format %L, delimiter %L, header %L)',
-		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
-	);
 
   pk := dataset.metaget_schema_pk($1); -- 1=conactPkFields,2=pkcols
 	IF p_intoSelect='' OR p_intoSelect IS NULL THEN
@@ -449,9 +445,9 @@ END
 $f$ language PLpgSQL;
 
 CREATE or replace FUNCTION dataset.create(
-	p_urn text, text DEFAULT '', boolean DEFAULT true, text DEFAULT ',', text  DEFAULT '', text  DEFAULT ''
+	p_urn text, text DEFAULT '', boolean DEFAULT true, text DEFAULT ',', text  DEFAULT ''
 ) RETURNS text AS $wrap$
-	SELECT dataset.create( dataset.meta_id($1), $2, $3, $4 )
+	SELECT dataset.create( dataset.meta_id($1), $2, $3, $4, $5 )
 $wrap$ language SQL IMMUTABLE;
 
 -- -- --
