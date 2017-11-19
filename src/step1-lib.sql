@@ -86,7 +86,7 @@ CREATE or replace FUNCTION array_jsonb_dic(anyarray) RETURNS JSONb AS $f$
   ) t
 $f$ language SQL IMMUTABLE;
 
-CREATE TABLE pgvw_tables_schemas AS
+CREATE VIEW pgvw_tables_schemas AS
   SELECT schemaname, pg_size_pretty(t.taille::bigint) AS taille_table, pg_size_pretty(t.taille_totale::bigint) AS taille_totale_table
     FROM (SELECT schemaname,
                  sum(pg_relation_size(schemaname || '.' || tablename)) AS taille,
@@ -96,7 +96,7 @@ CREATE TABLE pgvw_tables_schemas AS
   GROUP BY schemaname) as t ORDER BY taille_totale DESC
 ; -- eg. SELECT * FROM pgvw_tables_schemas WHERE schemaname='test123';
 
-CREATE TABLE pgvw_tables AS
+CREATE VIEW pgvw_tables AS
   SELECT schemaname||'.'||tablename as relname, tablespace, pg_size_pretty(taille) AS taille_table, pg_size_pretty(taille_totale) AS taille_totale_table
     FROM (SELECT *,
                  pg_relation_size(schemaname || '.' || tablename) AS taille,

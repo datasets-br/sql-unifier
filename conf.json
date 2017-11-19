@@ -11,5 +11,5 @@
     "datasets-br/city-codes":null
   },
   "useBig":true,  "useIDX":false,        "useRename":true,
-  "useYUml":true, "useAllNsAsDft":true
+  "useYUml":true, "useAllNsAsDft":false
 }
