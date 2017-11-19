@@ -1,17 +1,12 @@
 {
   "db": "postgresql://postgres:postgres@localhost:5432/trydatasets",
   "github.com":{
+    "lexml/lexml-vocabulary":null,
     "datasets/language-codes":null,
     "datasets/country-codes":null,
     "datasets-br/state-codes":"br-state-codes",
     "datasets-br/city-codes":null
   },
-   "local-csv":{
-     "test2017":{
-       "separator":";",
-       "folder":"/home/user/Documentos/specialisterne/mino-lex2017/attachments"
-     }
-   },
-
-  "useBig":true, "useIDX":false, "useRename":true, "useYUml":true
+  "useBig":true,  "useIDX":false,        "useRename":true,
+  "useYUml":true, "useAllNsAsDft":true
 }

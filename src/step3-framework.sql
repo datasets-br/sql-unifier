@@ -3,6 +3,11 @@
  * $f$ are functions and $wrap$ are wrap methods (overloading functions).
  */
 
+
+ DROP SCHEMA IF EXISTS test123 CASCADE;  -- LIXO!
+ CREATE SCHEMA test123;  -- LIXO!
+
+
 -- -- --
 -- -- --
 -- Part 1 - public handlers toolkit, for use with dataset.big selections.
@@ -53,17 +58,6 @@ $f$ LANGUAGE plpgsql IMMUTABLE;
 -- Part 2 - internal functions for dataset-schema structures.
 -- Used in create-tables, import, export and triggers.
 
-CREATE or replace FUNCTION dataset.jget_pks(JSONb) RETURNS text[] AS $f$
-  SELECT  array_agg(k::text)
-  FROM (
-    SELECT  jsonb_array_elements( CASE
-      WHEN $1->>'primaryKey' IS NULL THEN to_jsonb(array[]::text[])
-      WHEN jsonb_typeof($1->'primaryKey')='string' THEN to_jsonb(array[$1->'primaryKey'])
-      ELSE $1->'primaryKey'
-    END )#>>'{}' as k
-  ) t
-$f$ language SQL IMMUTABLE;
-
 /**
  * Get primaryKey selectores. Input meta.info, returns array[conactPkFields,pkcols]
  */
@@ -100,7 +94,7 @@ CREATE or replace FUNCTION dataset.yUML_box(int) RETURNS text AS $f$
 $f$ language SQL IMMUTABLE;
 
 CREATE or replace FUNCTION dataset.yUML_box(int[]) RETURNS text AS $f$
-  SELECT array_to_string(array_agg(dataset.yUML_box_fields( x )), E'\n\n')
+  SELECT array_to_string(array_agg(dataset.yUML_box( x )), E'\n\n')
   FROM unnest($1) t(x)
 $f$ language SQL IMMUTABLE;
 
@@ -382,7 +376,7 @@ BEGIN
 	  INTO q_fields,                  q_types
 	FROM dataset.meta WHERE id=$1;
 	IF q_types IS NULL OR q_fields IS NULL THEN
-		RAISE EXCEPTION 'No cache for view generation';
+		RAISE EXCEPTION 'internal4 - No cache for view generation';
 	END IF;
 	FOR i IN 1..array_upper(q_fields,1) LOOP
 		sqltype := lib.jtype_to_sql(q_types[i]);
@@ -412,7 +406,7 @@ DECLARE
 	s text;
 BEGIN
 	p := dataset.build_sql_names($1); -- p1=vname, p2=tname, p3=c_itens, p4=tab_itens, P5=field_names
-	FOR i IN 1..2 LOOP  IF relname_exists2(p[i]) THEN  -- p[i]>'' AND
+	FOR i IN 1..2 LOOP  IF relname_exists(p[i]) THEN  -- p[i]>'' AND
 			s := CASE WHEN i=1 THEN 'VIEW' ELSE 'FOREIGN TABLE' END;
 			EXECUTE format('DROP %s %s CASCADE;', s, p[i]);
 	END IF; END LOOP;
@@ -435,10 +429,12 @@ BEGIN
 			'SELECT %s%s, jsonb_build_array(%s) FROM %s %s',
 			$1, pk[1], p[5], p[2], s
     );
-    --RAISE NOTICE '-- DEBUG02 = %', p_intoSelect;
 	END IF;
 	s:= CASE WHEN pk[1]='' THEN '' ELSE ',key' END;
 	EXECUTE format( 'INSERT INTO dataset.big(source%s,c)  %s', s, p_intoSelect );
+  
+  ----old test      pk := relname_to_array(p[1]); -- or pop last item  to string
+  --EXECUTE format( 'CREATE TABLE test123.%s AS SELECT * FROM %s', pk[2], p[1] );
 
 	RETURN format('ok all created for %s (id %s)', p[1], $1);
 END

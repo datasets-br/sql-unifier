@@ -31,7 +31,7 @@ INSERT INTO dataset.ns (name) VALUES (''); -- the default namespace!
 -- DROP TABLE IF EXISTS dataset.meta CASCADE;
 CREATE TABLE dataset.meta (
 	id serial PRIMARY KEY,
-	namespace text NOT NULL DEFAULT '',  --  empty namespace is the main one, like 'public'
+	namespace text NOT NULL DEFAULT '' REFERENCES dataset.ns(name),
 	name text NOT NULL, -- original dataset name or filename of the CSV
 
 	is_canonic BOOLEAN DEFAULT false, -- for canonic or "reference datasets". Curated by community.
@@ -44,13 +44,13 @@ CREATE TABLE dataset.meta (
 	kx_uname text, -- the normalized name, used for  dataset.meta_id() and SQL-View labels
 	kx_urn text,   -- the transparent ID for this dataset.  "$namespace:$kx_uname".
 	kx_fields text[], -- field names as in info.
-	kx_types text[],  -- field JSON-datatypes as in info.
+	kx_types text[]  -- field JSON-datatypes as in info.
 
-	UNIQUE(namespace,kx_uname), -- not need but same as kx_urn
-	CHECK( lib.normalizeterm(namespace)=namespace AND lower(namespace)=namespace ),
-	CHECK( kx_uname=dataset.makekx_uname(name) ),
-	CHECK( kx_urn=dataset.makekx_urn(kx_urn,namespace) ),
-	CHECK( NOT(is_canonic) OR (is_canonic AND projection_of IS NULL) )
+	,UNIQUE(namespace,kx_uname) -- not need but same as kx_urn
+	,CHECK( lib.normalizeterm(namespace)=namespace AND lower(namespace)=namespace )
+	,CHECK( kx_uname=dataset.makekx_uname(name) )
+	--,CHECK( kx_urn=dataset.makekx_urn(kx_urn,namespace) )
+	--,CHECK( NOT(is_canonic) OR (is_canonic AND projection_of IS NULL) )
 );
 
 CREATE TABLE dataset.big (
@@ -85,7 +85,8 @@ $f$ LANGUAGE SQL IMMUTABLE;
 CREATE or replace FUNCTION dataset.meta_refresh() RETURNS TRIGGER AS $f$
 BEGIN
 	IF NOT EXISTS (SELECT 1 FROM dataset.ns WHERE name = NEW.namespace) THEN
-		RAISE EXCEPTION '(under construction) Invalid namespace: %', NEW.namespace;
+		-- RAISE NOTICE '-- DEBUG02 see NS %', NEW.namespace;
+		INSERT INTO dataset.ns (name) VALUES (NEW.namespace);
 	END IF; -- future = controlling here the namespaces and kx_ns.
 	NEW.kx_uname := dataset.makekx_uname(NEW.name);
 	NEW.kx_urn   := dataset.makekx_urn(NEW.kx_uname,NEW.namespace);
@@ -96,6 +97,21 @@ BEGIN
 	RETURN NEW;
 END;
 $f$ LANGUAGE plpgsql;
+
+/**
+ * Get primary-keys from standard JSON package.
+ * @return array with each key.
+ */
+CREATE or replace FUNCTION dataset.jget_pks(JSONb) RETURNS text[] AS $f$
+  SELECT  array_agg(k::text)
+  FROM (
+    SELECT  jsonb_array_elements( CASE
+      WHEN $1->>'primaryKey' IS NULL THEN to_jsonb(array[]::text[])
+      WHEN jsonb_typeof($1->'primaryKey')='string' THEN to_jsonb(array[$1->'primaryKey'])
+      ELSE $1->'primaryKey'
+    END )#>>'{}' as k
+  ) t
+$f$ language SQL IMMUTABLE;
 
 -- -- --
 -- -- --
@@ -112,11 +128,12 @@ CREATE TRIGGER dataset_meta_kx  BEFORE INSERT OR UPDATE
 
 
 CREATE VIEW dataset.vmeta_summary_aux AS
-  SELECT m.id, m.kx_urn as urn, m.info->'primaryKey' as pkey, m.info->>'lang' as lang,
+  SELECT m.id, m.kx_urn as urn,  array_to_string(dataset.jget_pks(m.info),'/') as pkey, m.info->>'lang' as lang,
     jsonb_array_length(m.info#>'{schema,fields}') as n_cols, t.n_rows
     -- jsonb_pretty(info) as show_info
   FROM dataset.meta m,
 	LATERAL  (SELECT count(*) as n_rows FROM dataset.big WHERE source=m.id) t
+	ORDER BY 2
 ;
 CREATE VIEW dataset.vmeta_summary AS
   SELECT id, urn, pkey::text, lang, n_cols, n_rows

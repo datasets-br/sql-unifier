@@ -41,19 +41,29 @@ CREATE or replace FUNCTION jsonb_array_totext(JSONb) RETURNS text[] AS $$
   SELECT array_agg(x) FROM jsonb_array_elements_text($1) t(x);
 $$ language SQL IMMUTABLE;
 
-CREATE or replace FUNCTION relname_exists(text,text default 'public') RETURNS boolean AS $$
-  SELECT EXISTS (
-     SELECT 1
-     FROM   pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE  n.nspname = $2  AND c.relname = $1
-     );
-$$ language SQL IMMUTABLE;
-CREATE or replace FUNCTION relname_exists2(text,text default 'public') RETURNS boolean AS $wrap$
-  SELECT relname_exists(y[1],y[2]) -- ugly code, please review
-  FROM (
-    SELECT CASE WHEN x[2] IS NULL THEN array[x[1],$2] ELSE array[x[2],x[1]] END
-    FROM (SELECT regexp_split_to_array($1,'\.')) t(x)
-  ) t2(y)
+/**
+ * From my old SwissKnife Lib. For pg 9.3+ try to_regclass()::text ...
+ * Check and normalize to array the free-parameter relation-name.
+ * Input options: (name); (name,schema), ("schema.name"). Ignores schema2 in ("schema.name",schema2).
+ * @returns array[schemaName,tableName]
+ */
+CREATE or replace FUNCTION relname_to_array(text,text default NULL) RETURNS text[] AS $f$
+     SELECT array[n.nspname::text, c.relname::text]
+     FROM   pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace,
+            regexp_split_to_array($1,'\.') t(x) -- not work with quoted names
+     WHERE  CASE
+              WHEN COALESCE(x[2],'')>'' THEN n.nspname = x[1]      AND c.relname = x[2]
+              WHEN $2 IS NULL THEN           n.nspname = 'public'  AND c.relname = $1
+              ELSE                           n.nspname = $2        AND c.relname = $1
+            END
+$f$ language SQL IMMUTABLE;
+
+CREATE or replace FUNCTION relname_exists(text,text default NULL) RETURNS boolean AS $wrap$
+  SELECT relname_to_array($1,$2) IS NOT NULL
+$wrap$ language SQL IMMUTABLE;
+
+CREATE or replace FUNCTION relname_normalized(text,text default NULL,boolean DEFAULT true) RETURNS text AS $wrap$
+  SELECT COALESCE(array_to_string(relname_to_array($1,$2), '.'), CASE WHEN $3 THEN '' ELSE NULL END)
 $wrap$ language SQL IMMUTABLE;
 
 
@@ -76,6 +86,57 @@ CREATE or replace FUNCTION array_jsonb_dic(anyarray) RETURNS JSONb AS $f$
   ) t
 $f$ language SQL IMMUTABLE;
 
+CREATE TABLE pgvw_tables_schemas AS
+  SELECT schemaname, pg_size_pretty(t.taille::bigint) AS taille_table, pg_size_pretty(t.taille_totale::bigint) AS taille_totale_table
+    FROM (SELECT schemaname,
+                 sum(pg_relation_size(schemaname || '.' || tablename)) AS taille,
+                 sum(pg_total_relation_size(schemaname || '.' || tablename)) AS taille_totale
+            FROM pg_tables
+            WHERE relname_exists(tablename,schemaname)   -- see note
+  GROUP BY schemaname) as t ORDER BY taille_totale DESC
+; -- eg. SELECT * FROM pgvw_tables_schemas WHERE schemaname='test123';
+
+CREATE TABLE pgvw_tables AS
+  SELECT schemaname||'.'||tablename as relname, tablespace, pg_size_pretty(taille) AS taille_table, pg_size_pretty(taille_totale) AS taille_totale_table
+    FROM (SELECT *,
+                 pg_relation_size(schemaname || '.' || tablename) AS taille,
+                 pg_total_relation_size(schemaname || '.' || tablename) AS taille_totale
+            FROM pg_tables) AS tables
+            WHERE relname_exists(tablename,schemaname)   -- see note
+   ORDER BY taille_totale DESC
+; -- eg. SELECT * FROM pgvw_tables WHERE relname='dataset.big';
+
+-- -- -- -- --
+-- DISK-USAGE
+
+CREATE VIEW pgvw_class_usage AS
+  SELECT *, pg_size_pretty(table_bytes) AS table_size
+  FROM (
+	SELECT nspname , relname, total_bytes
+	       , total_bytes-index_bytes-COALESCE(toast_bytes,0) AS table_bytes
+	FROM (
+		SELECT nspname , relname
+		  , pg_total_relation_size(c.oid) AS total_bytes
+		  , pg_indexes_size(c.oid) AS index_bytes
+		  , pg_total_relation_size(reltoastrelid) AS toast_bytes
+		FROM pg_class c
+		LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE relkind = 'r'
+	) a
+  ) t
+  ORDER BY 1,2
+; -- eg. SELECT * FROM pgvw_class_usage WHERE relname='big' AND nspname='dataset';
+
+CREATE VIEW pgvw_nsclass_usage AS
+  SELECT *, pg_size_pretty(table_bytes) as table_size
+  FROM (
+    SELECT nspname,
+           count(*) as n_tables,
+           sum(total_bytes) as total_bytes, sum(table_bytes) as table_bytes
+    FROM pgvw_class_usage
+    GROUP BY nspname
+  ) t
+; -- eg. SELECT * FROM pgvw_nsclass_usage WHERE nspname='dataset';
 
 
 ------------------------
