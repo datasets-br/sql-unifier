@@ -109,7 +109,7 @@ CREATE TABLE pgvw_tables AS
 -- -- -- -- --
 -- DISK-USAGE
 
-CREATE VIEW pgvw_class_usage AS
+CREATE VIEW pgvw_class_usage AS  --  see https://wiki.postgresql.org/wiki/Disk_Usage
   SELECT *, pg_size_pretty(table_bytes) AS table_size
   FROM (
 	SELECT nspname , relname, total_bytes

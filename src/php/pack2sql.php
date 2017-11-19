@@ -55,14 +55,18 @@ if (isset($conf['local-csv'])) {
   $list2 = [];
   foreach ($conf['local-csv'] as $localName=>$c) {  // expand defaults:
     //parsing:
-    $c_type = is_array($c)? (has_string_keys($c)? 'a':'i'): 's';
-    $nc = ($c_type=='a')? $c: [];
-    if (!isset($nc['separator'])) $n['separator']=',';
-    if ( $c_type=='i' )   $nc['list']=$c;
-    elseif ($c_type=='s') { $c=['folder'=>$c]; $c_type='a'; }
+    $c_type = is_array($c)? (has_string_keys($c)? 'a':'i'): 's'; // s=string, a=associative-array, i=int-indexed-array
+    if ( $c_type=='i' )
+      $nc['list']=$c; // the "new $c"
+    elseif ($c_type=='s') {
+      $c=['folder'=>$c];  $c_type='a';
+    } else
+      $nc = $c;
+    if (!isset($nc['separator'])) $nc['separator']=',';
     if ( $c_type=='a' && isset($c['folder']) )
       $nc['list'] = glob("$c[folder]/*.csv"); // take all files
-    elseif (!isset($nc['list'])) die("\n check conf.json local-csv, with no list no default\n");
+    elseif (!isset($nc['list']))
+      die("\n check conf.json local-csv, with no list no default\n");
     $localCsvConf = $nc;
     $localPacks = ['resources'=>[]];
     foreach ($nc['list'] as $i=>$f) {
@@ -88,10 +92,16 @@ if (isset($conf['local-csv'])) {
 foreach($lists as $listname) {
   fwrite(STDERR, "\n\n CONFIGS ($listname): NsAsDft=$useAllNsAsDft useIDX=$useIDX, count=".count($conf[$listname])." items.\n");
   foreach($conf[$listname] as $prj=>$file) {
-    if (is_array($file)) {$file = $file['folder'];} // need more settings?
-    $path = '';
+    $test = [];  $path = '';  $confReplacements = NULL;
     fwrite(STDERR, "\n Creating cache-scripts for $prj of $listname:");
-    $test = [];
+    if (is_array($file)) {   // need more settings?
+      if (isset($file['folder']))  $file = $file['folder'];
+      if (isset($file['_corrections_'])) {
+        fwrite(STDERR, "\n\t -- Notice: using conf-corrections for datapackage");
+        $confReplacements = $file['_corrections_'];
+        $file=NULL;
+      } // has corrections
+    } // is array
     if ($listname=='local-csv') {
       $uri = $uriBase = $uriBase2 = '';
       $pack = $localPacks;
@@ -102,6 +112,14 @@ foreach($lists as $listname) {
       $pack = json_decode( file_get_contents($uri), true );
       // substring('lexml/lexml-vocabulary' from '^[^/]+')
       $pack['ns'] = (!$prj && $useAllNsAsDft)? '': preg_replace('#/.+$#us','',$prj);
+      if ($confReplacements) foreach ($confReplacements as $_k=>$_v) {
+        if ($_k!='resources') {$pack[$_k]=$_v; fwrite(STDERR, "\n\t $_k=$_v"); }
+        else for($_i=0; $_i<count($_v); $_i++) if (count($confReplacements['resources'][$_i])) // suppose same order conf as original
+          foreach ($confReplacements['resources'][$_i] as $_k2=>$_v2) {
+            $pack['resources'][$_i][$_k2]=$_v2;
+            fwrite(STDERR, "\n\t\t... Replacing resources[$_i][$_k2] by '$_v2'");
+          }
+      }
     }
     foreach ($pack['resources'] as $r) if (!$file || $r['name']==$file || $r['path']==$file) {
       $IDX++;

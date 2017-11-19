@@ -4,6 +4,9 @@
     "lexml/lexml-vocabulary":null,
     "datasets/language-codes":null,
     "datasets/country-codes":null,
+    "datasets/world-cities":{
+      "_corrections_":{"resources":[{"primaryKey": "geonameid"}]}
+    },
     "datasets-br/state-codes":"br-state-codes",
     "datasets-br/city-codes":null
   },
