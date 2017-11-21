@@ -16,7 +16,7 @@
  * Float-Sum of a slice of columns of the table dataset.big, avoiding nulls.
  */
 CREATE FUNCTION dataset.fltsum_colslice(
-  p_j JSONb,   -- from dataset.big.c
+  p_j JSONb,   -- from dataset.big.j
   p_ini int DEFAULT 0,  -- first column of the slice, starting with 0
   p_fim int DEFAULT NULL  -- last column of the slice, NULL for all cols
 ) RETURNS float  AS $f$
@@ -30,13 +30,13 @@ BEGIN
   END LOOP;
   RETURN tsum;
 END;
-$f$ LANGUAGE plpgsql IMMUTABLE;
+$f$ LANGUAGE PLpgSQL IMMUTABLE;
 
 /**
  * Bigint-Sum of a slice of columns of the table dataset.big, avoiding nulls.
  */
 CREATE FUNCTION dataset.intsum_colslice(
-  p_j JSONb,   -- from dataset.big.c
+  p_j JSONb,   -- from dataset.big.j
   p_ini int DEFAULT 0,  -- first column of the slice, starting with 0
   p_fim int DEFAULT NULL  -- last column of the slice, NULL for all cols
 ) RETURNS bigint  AS $f$
@@ -50,7 +50,7 @@ BEGIN
   END LOOP;
   RETURN tsum;
 END;
-$f$ LANGUAGE plpgsql IMMUTABLE;
+$f$ LANGUAGE PLpgSQL IMMUTABLE;
 
 
 -- -- --
@@ -124,34 +124,6 @@ CREATE FUNCTION dataset.metaget_schema_field(text, text, text DEFAULT NULL) RETU
   SELECT dataset.metaget_schema_field( dataset.meta_id($1,$3), $2 )
 $wrap$ language SQL IMMUTABLE;
 
--- -- --
--- -- --
--- Part 3 - JSONb toolkit.
-
-CREATE FUNCTION dataset.jsonb_arrays(int) RETURNS JSONb AS $f$
-	SELECT jsonb_agg(x) FROM (
-			SELECT to_jsonb(kx_fields) FROM dataset.meta WHERE id=$1
-			UNION ALL
-			(SELECT c FROM dataset.big WHERE source=$1)
-		) t(x)
-$f$ language SQL IMMUTABLE;
-
-CREATE FUNCTION dataset.jsonb_arrays(text, text default NULL) RETURNS JSONb AS $wrap$
-  SELECT dataset.jsonb_arrays( dataset.meta_id($1,$2) )
-$wrap$ language SQL IMMUTABLE;
-
-
-CREATE FUNCTION dataset.jsonb_objects(int) RETURNS JSONb AS $f$
-	SELECT jsonb_agg(jsonb_object(k,x))
-	FROM
-		(SELECT jsonb_array_totext(c) FROM dataset.big WHERE source=$1) b(x), -- ugly convertion, lost JSON datatype
-		(SELECT kx_fields FROM dataset.meta WHERE id=$1) t(k)
-$f$ language SQL IMMUTABLE;
-
-CREATE FUNCTION dataset.jsonb_objects(text, text default NULL) RETURNS JSONb AS $wrap$
-  SELECT dataset.jsonb_objects( dataset.meta_id($1,$2) )
-$wrap$ language SQL IMMUTABLE;
-
 
 -- -- --
 -- -- --
@@ -194,13 +166,15 @@ CREATE or replace FUNCTION dataset.export_yUML_boxes(
   END
 $f$ language SQL IMMUTABLE;
 
-
+/**
+ * Export a dataset (or other "thing" as the vmeta_summary), to an output format (tipically CSV or TXT).
+ */
 CREATE or replace FUNCTION dataset.export_thing(
 	p_dataset_id int,
-	p_thing text DEFAULT '',  -- nothing = vname
+	p_thing text DEFAULT '',     -- nothing = vname
 	p_format text DEFAULT 'csv', -- csv, json-arrays or json-objs
-	p_filename text DEFAULT NULL, -- as output
-	p_tmp boolean DEFAULT true  -- flag to use or not automatic '/tmp' as path
+	p_filename text DEFAULT NULL,  -- as output
+	p_tmp boolean DEFAULT true     -- flag to use or not automatic '/tmp' as path
 ) RETURNS text AS $f$
 DECLARE
 	vname text;
@@ -344,7 +318,7 @@ BEGIN
 	INSERT INTO dataset.meta(name,info) VALUES (p_name,(SELECT info FROM dataset.meta WHERE id=first));
 	idnew := dataset.meta_id(p_name);
 	-- basta fazer || [source]
-	INSERT INTO dataset.big(source, c) SELECT idnew,c FROM dataset.big WHERE source = ANY($1);
+	INSERT INTO dataset.big(source, j) SELECT idnew,j FROM dataset.big WHERE source = ANY($1);
 	return 'criou o new!';
 END
 $f$ language PLpgSQL;
@@ -380,7 +354,7 @@ BEGIN
 	END IF;
 	FOR i IN 1..array_upper(q_fields,1) LOOP
 		sqltype := lib.jtype_to_sql(q_types[i]);
-		c_item[i] := ' (c->>'|| (i-1) || ')::'|| sqltype ||' AS '|| q_fields[i];
+		c_item[i] := ' (j->>'|| (i-1) || ')::'|| sqltype ||' AS '|| q_fields[i];
 		flditem[i] := q_fields[i] ||' '|| sqltype;
 	END LOOP;
 	RETURN array[vname, tname, array_to_string(c_item,', '), array_to_string(flditem,', '), array_to_string(q_fields,', ')];
@@ -411,8 +385,14 @@ BEGIN
 			EXECUTE format('DROP %s %s CASCADE;', s, p[i]);
 	END IF; END LOOP;
 
+  s:= format(
+		'SELECT %s FROM (SELECT jsonb_array_elements(j) FROM dataset.big WHERE source=%s) t(j)',
+    p[3], $1
+	);
+  pk := dataset.metaget_schema_pk($1); -- 1=conactPkFields,2=pkcols
 	EXECUTE format(
-		'CREATE VIEW %s AS SELECT %s FROM dataset.big where source=%s ORDER BY id', p[1], p[3], $1
+		'CREATE VIEW %s AS %s',
+    p[1], CASE WHEN pk[1]>'' THEN 'SELECT * FROM ('||s||') t2 ORDER BY '||pk[2] ELSE s END
 	);
 
 	IF p_delimiter='' OR p_delimiter IS NULL THEN p_delimiter=','; END IF;
@@ -421,20 +401,16 @@ BEGIN
 		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
 	);
 
-
-  pk := dataset.metaget_schema_pk($1); -- 1=conactPkFields,2=pkcols
 	IF p_intoSelect='' OR p_intoSelect IS NULL THEN
-    s:= CASE WHEN pk[1]='' THEN '' ELSE 'ORDER BY '||pk[2] END;
+    --no key s:= CASE WHEN pk[1]='' THEN '' ELSE 'ORDER BY '||pk[2] END;
 		p_intoSelect := format(
-			'SELECT %s%s, jsonb_build_array(%s) FROM %s %s',
-			$1, pk[1], p[5], p[2], s
+			'SELECT %s, jsonb_agg(jsonb_build_array(%s)) FROM %s',
+			-- no key $1, pk[1], p[5], p[2], s
+      $1, p[5], p[2]
     );
 	END IF;
-	s:= CASE WHEN pk[1]='' THEN '' ELSE ',key' END;
-	EXECUTE format( 'INSERT INTO dataset.big(source%s,c)  %s', s, p_intoSelect );
-  
-  ----old test      pk := relname_to_array(p[1]); -- or pop last item  to string
-  --EXECUTE format( 'CREATE TABLE test123.%s AS SELECT * FROM %s', pk[2], p[1] );
+	-- no key s:= CASE WHEN pk[1]='' THEN '' ELSE ',key' END;
+	EXECUTE format( 'INSERT INTO dataset.big(source,j)  %s', p_intoSelect );
 
 	RETURN format('ok all created for %s (id %s)', p[1], $1);
 END
@@ -449,3 +425,45 @@ $wrap$ language SQL IMMUTABLE;
 -- -- --
 -- -- --
 -- Part 7 - Import toolkit.
+
+-- .. later
+
+
+
+-- -- --
+-- -- --
+-- Part 8 - Basic and automatic assertions.
+
+-- Eg. check uniqueness of declared primaryKeys  ...
+
+CREATE or replace FUNCTION dataset.validate(int DEFAULT NULL) RETURNS JSONb AS $f$
+DECLARE
+    dst RECORD;
+    jj JSONb;
+    q_id int;
+    q_assert boolean;
+BEGIN
+  FOR dst IN SELECT * FROM dataset.meta WHERE (CASE WHEN $1 IS NOT NULL THEN id=$1 ELSE true END) LOOP
+    q_id := dst.id;
+    RAISE NOTICE 'Checking errors for % ... (no message is success)', quote_ident(dst.kx_urn);
+    CASE dst.jtd
+      WHEN 'tab-aoa' THEN
+        SELECT j INTO jj FROM dataset.big WHERE source=q_id;
+        IF NOT (jsonb_array_length(jj)>0) THEN
+          RAISE NOTICE 'ERROR 1a: first-level array empty';
+        ELSEIF NOT (jsonb_array_length(jj->0)>0) THEN
+          RAISE NOTICE 'ERROR 2a: second-level array empty';
+        END IF;
+      WHEN 'tab-aoo' THEN
+        SELECT j INTO jj FROM dataset.big WHERE source=q_id;
+        IF NOT (jsonb_array_length(jj)>0) THEN
+          RAISE NOTICE 'ERROR 1b: first-level array empty';
+        ELSEIF NOT (jsonb_array_length(jj->0)>0) THEN
+          RAISE NOTICE 'ERROR 2b: second-level array empty';
+          END IF;
+      ELSE
+        RAISE NOTICE 'ERROR33: not developed asserts for %', quote_ident(dst.jtd);
+    END CASE; -- dst.jtd
+  END LOOP;
+END
+$f$ language PLpgSQL;

@@ -7,7 +7,6 @@
  * REUSING generated scripts:  sh src/cache/make.sh
  */
 
-
 $here = dirname(__FILE__); // ./src/php
 $STEP = 4;
 $DROP_allTmp = true; // true when usede before here the DROP cascade the SERVER tmp_*
@@ -112,7 +111,8 @@ foreach($lists as $listname) {
       $pack = json_decode( file_get_contents($uri), true );
       // substring('lexml/lexml-vocabulary' from '^[^/]+')
       $pack['ns'] = (!$prj && $useAllNsAsDft)? '': preg_replace('#/.+$#us','',$prj);
-      if ($confReplacements) foreach ($confReplacements as $_k=>$_v) {
+
+      if ($confReplacements) foreach ($confReplacements as $_k=>$_v) { // CONF-CORRECTIONS:
         if ($_k!='resources') {$pack[$_k]=$_v; fwrite(STDERR, "\n\t $_k=$_v"); }
         else for($_i=0; $_i<count($_v); $_i++) if (count($confReplacements['resources'][$_i])) // suppose same order conf as original
           foreach ($confReplacements['resources'][$_i] as $_k2=>$_v2) {
@@ -161,12 +161,13 @@ $scriptSH .= "
   $scriptSH_end
   $PSQL -c \"SELECT * FROM dataset.vmeta_summary\"
   $PSQL -c \"SELECT * FROM pgvw_nsclass_usage WHERE nspname='dataset'\"
+  $PSQL -c \"SELECT 'Use SELECT dataset.validate() to check constraints.' AS bye\"
 "; // use array steps as config
 file_put_contents($f, $scriptSQL);
 file_put_contents("$cacheFolder/make.sh", $scriptSH);
 if ($useYUml) file_put_contents("$cacheFolder/ref_diagrams.yuml", $scriptYUml);
 
-fwrite(STDERR, "\nEND of cache-scripts generation\n See makeTmp.* scripts at $cacheFolder\n");
+fwrite(STDERR, "\nEND of cache-scripts generation\n See scripts at $cacheFolder\n");
 fwrite(STDERR, "\n Make all by command 'sh src/cache/make.sh'\n");
 fwrite(STDERR, "\n Try after, to play SQL-schema dataset, 'psql \"$conf[db]\"'\n");
 

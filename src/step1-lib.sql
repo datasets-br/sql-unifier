@@ -7,6 +7,8 @@
 
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; -- for metaphone() and levenshtein()
 CREATE EXTENSION IF NOT EXISTS unaccent; -- for unaccent()
+CREATE EXTENSION IF NOT EXISTS pgcrypto; -- for digest()
+
 
 DROP SCHEMA lib CASCADE;  -- caution (!) with existing libs
 CREATE SCHEMA lib;
@@ -40,6 +42,9 @@ CREATE or replace FUNCTION jsonb_array_totext(JSONb) RETURNS text[] AS $$
   -- ideal is PostgreSQL to (internally) convert json array into SQL-array of JSONb values
   SELECT array_agg(x) FROM jsonb_array_elements_text($1) t(x);
 $$ language SQL IMMUTABLE;
+
+--  pthe remain of the array_pop. Ideal a function that changes array and pop it
+CREATE FUNCTION array_pop_off(ANYARRAY) RETURNS ANYARRAY AS $$ SELECT $1[2:array_length($1,1)]; $$ LANGUAGE sql IMMUTABLE;
 
 /**
  * From my old SwissKnife Lib. For pg 9.3+ try to_regclass()::text ...
@@ -85,26 +90,6 @@ CREATE or replace FUNCTION array_jsonb_dic(anyarray) RETURNS JSONb AS $f$
     SELECT a, ordinality   FROM   unnest($1) WITH ORDINALITY a
   ) t
 $f$ language SQL IMMUTABLE;
-
-CREATE VIEW pgvw_tables_schemas AS
-  SELECT schemaname, pg_size_pretty(t.taille::bigint) AS taille_table, pg_size_pretty(t.taille_totale::bigint) AS taille_totale_table
-    FROM (SELECT schemaname,
-                 sum(pg_relation_size(schemaname || '.' || tablename)) AS taille,
-                 sum(pg_total_relation_size(schemaname || '.' || tablename)) AS taille_totale
-            FROM pg_tables
-            WHERE relname_exists(tablename,schemaname)   -- see note
-  GROUP BY schemaname) as t ORDER BY taille_totale DESC
-; -- eg. SELECT * FROM pgvw_tables_schemas WHERE schemaname='test123';
-
-CREATE VIEW pgvw_tables AS
-  SELECT schemaname||'.'||tablename as relname, tablespace, pg_size_pretty(taille) AS taille_table, pg_size_pretty(taille_totale) AS taille_totale_table
-    FROM (SELECT *,
-                 pg_relation_size(schemaname || '.' || tablename) AS taille,
-                 pg_total_relation_size(schemaname || '.' || tablename) AS taille_totale
-            FROM pg_tables) AS tables
-            WHERE relname_exists(tablename,schemaname)   -- see note
-   ORDER BY taille_totale DESC
-; -- eg. SELECT * FROM pgvw_tables WHERE relname='dataset.big';
 
 -- -- -- -- --
 -- DISK-USAGE
@@ -237,3 +222,64 @@ CREATE or replace FUNCTION lib.msgcut(
 ) RETURNS text AS $f$
   SELECT CASE WHEN $1=s THEN $1 ELSE s||'...' END FROM (SELECT substring($1,1,$2)) t(s);
 $f$ LANGUAGE SQL IMMUTABLE;
+
+-------------
+-------------
+----- HASH functions, to preserve name-id correspondence in the TUTORIALS and view names
+
+CREATE or replace FUNCTION lib.sha1_cut7(p_word text) RETURNS int AS $f$
+  -- About precise choice of truncation, see https://stackoverflow.com/q/4784335
+  SELECT CASE WHEN $1='' THEN  0  ELSE ('x' || lpad(
+      substr(encode(digest($1, 'sha1'), 'hex'), 1, 7)
+      , 8, '0'
+    ))::bit(32)::int END
+$f$ LANGUAGE SQL IMMUTABLE;
+
+CREATE or replace FUNCTION lib.hash_digits(
+  p_word text,
+  p_digits int DEFAULT 2,
+  p_step int DEFAULT 2 -- minimal 2 to cut  never-zero-first
+) RETURNS text AS $f$
+  -- 0,1,2,..9,10,12,...,99,100,101,... Never 00 pad.
+  SELECT CASE
+      WHEN p_word IS NULL OR p_digits<1 OR p_step<2 OR p_step>6 THEN NULL
+      WHEN p_word='' THEN '0'
+      WHEN substr(x,1,1)='0' THEN  lib.hash_digits(p_word,p_digits,p_step+1)
+      ELSE x
+    END
+  FROM (
+    SELECT substr(i::text, p_step, p_digits) as x, i FROM (SELECT lib.sha1_cut7(p_word)) r(i)
+  ) t
+$f$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE or replace FUNCTION lib.hash_digits_addnew(p_word text, p_list int[]) RETURNS int AS $f$
+  -- Heuristic to good choice of minimal digits in hashed ID.
+  -- for ns_id of dataset.ns, so we expect less tham 100 naspaces... but here work fine to 999
+  -- see also n/k at https://en.wikipedia.org/wiki/Hash_table#Key_statistics
+DECLARE
+  len int;
+  digits int;
+  n int; -- new hash
+  flag boolean;
+BEGIN
+  len    := array_length(p_list,1);
+  digits := CASE WHEN len>9 THEN (CASE WHEN len>99 THEN 3 ELSE 2 END) ELSE 1 END; -- with coherence hypotesis for each id
+  n      := lib.hash_digits(p_word,digits)::int;
+  flag   := (p_list is not null AND len>0 AND n=ANY(p_list));
+  IF flag THEN
+    n    := lib.sha1_cut7(p_word) % (10*digits); -- like to use other hash, before +1
+    flag := (n=ANY(p_list));
+    IF flag AND ((digits=1 AND len>6) OR (digits=2 AND len>70)) THEN
+        -- heuristic to reduce normal collisions at ~50%
+      n    := lib.hash_digits(p_word,digits+1)::int;
+      flag := (n=ANY(p_list));
+    END IF;
+    IF flag THEN
+      SELECT min(x) INTO n
+      FROM (SELECT unnest(p_list)+1 as x) t WHERE x NOT IN (SELECT unnest(p_list));
+    END IF; -- flag2
+  END IF; -- flag1
+  RETURN n;
+END
+$f$ LANGUAGE PLpgSQL IMMUTABLE;

@@ -1,23 +1,21 @@
 # SQL dataset unifier
 
-Try all datasets in a single PostgreSQL database, plug-and-play! Load and manage all your [FrictionLessData tabular packages](http://specs.frictionlessdata.io/tabular-data-package/) (CSV datasets).
+Try all datasets in a single PostgreSQL table, plug-and-play! Load and manage all your [FrictionLessData tabular packages](http://specs.frictionlessdata.io/tabular-data-package/) (CSV datasets) with SQL.
 
-Load in a single big table, where each CSV line is converted into a [JSON array](https://specs.frictionlessdata.io/tabular-data-resource/#json-tabular-data).
+Load in a single big table, where each CSV line is converted into a [tabular JSON array](https://specs.frictionlessdata.io/tabular-data-resource/#json-tabular-data).
 In PostgreSQL 9.5+ the best way to digital preservation is the [JSONb datatype](https://www.postgresql.org/docs/current/static/datatype-json.html), so the big table of datasets is:
 
 ```sql
 CREATE TABLE dataset.big (
-  id bigserial not null primary key,
-  source int NOT NULL REFERENCES dataset.meta(id) ON DELETE CASCADE, -- Dataset ID and metadata.
-  key text,  -- Dataset primary key (converted to text) is optional.
-  c JSONb CHECK(jsonb_array_length(c)>0), -- all dataset columns here, as exact copy of CSV line!
-  UNIQUE(source,key)
+  id bigserial not null primary key,  -- control for (rare) splitted datasets
+  source int NOT NULL REFERENCES dataset.meta(id) ON DELETE CASCADE, -- Controls and all metadata.
+  j JSONb NOT NULL, -- Dataset contents goes here!
 );
 ```
 
-Each line of all CSV files is loaded into a *JSONb array*:  CSV datatype is preserved and data representation is the most efficient and compressed &mdash; with fast access, indexation and full flexibility of [JSONb functions and operators](https://www.postgresql.org/docs/current/static/functions-json.html).
+Each line of all CSV files is loaded into a *JSONb array*:  CSV datatype is preserved and data representation is the most efficient and compressed &mdash; with fast access, indexation and full flexibility of [JSONb functions and operators](https://www.postgresql.org/docs/current/static/functions-json.html). The most important to manage lines of tabular data is to split by *jsonb_array_elements()* function or to join by *jsonb_agg()* function (see [disk-usage and performance benchmarks](https://github.com/datasets-br/sql-unifier/wiki/Benchmarking)).
 
-The framework also offers usual relational data access by SQL VIEW, generated automatically (!) and casting original datatypes to consistent SQL datatypes, to build joins and other complex SQL expressions from the preserved datasets.
+[The framework](https://github.com/datasets-br/sql-unifier/wiki/5.-The-framework-architecture) also offers usual relational data access by SQL-VIEW, generated automatically (!) and casting original datatypes to consistent SQL datatypes, to build joins and other complex SQL expressions from the preserved datasets. Export and import, many formats, also easy.
 
 ## Simplest use (demo)
 
@@ -33,7 +31,7 @@ sh src/cache/make.sh
 Done!  Try eg. with `psql URI` (as connection comment above) some queries:
 * a summary of all saved datasets: `SELECT * FROM dataset.vmeta_summary;`
 * a complete list of all fields:  `SELECT * FROM dataset.vmeta_fields;`
-* all brasilian states at CSV file: `SELECT * FROM tmpcsv_br_state_codes;`
+* all brasilian states at CSV file: `SELECT * FROM tmpcsv4_br_state_codes;`
 * same dataset in the database as a big table of JSON arrays: `SELECT c FROM dataset.big WHERE dataset.meta_id('br_state_codes');`
 * same again, but using the standard SQL VIEW create for simplify `dataset.big` access: `SELECT * FROM vw_br_state_codes;`
 
