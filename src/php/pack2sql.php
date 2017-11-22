@@ -11,10 +11,16 @@ $here = dirname(__FILE__); // ./src/php
 $STEP = 4;
 $DROP_allTmp = true; // true when usede before here the DROP cascade the SERVER tmp_*
 $DROP_allDaset = true; // true when usede before here the DROP SCHEMA dataset CASCADE.
+$useCurl = false;
 $LOCALprefix = ''; //'local_'  // for local datasets, prefix as namespace
+
+// terminal configs
+$noWget = ($argc>1 && ltrim(strtolower($argv[1]),'-')=='nowget'); // the --noWget option, rare to not redo /tmp
+
 // CONFIGS at the project's conf.json
 $conf = json_decode(file_get_contents($here.'/../../conf.json'),true);
 
+$WGET = $useCurl? 'curl -O': 'wget -O'; // check correct curl command!
 $lists = [];
 foreach(['github.com','local','local-csv'] as $c)
    if (isset($conf[$c]))
@@ -137,7 +143,7 @@ foreach($lists as $listname) {
       $scriptSQL .= $sql;
       if ($listname=='github.com') {
        $url = "$uriBase/master/$path";
-       $scriptSH  .= "\nwget -O $file2 -c $url";
+       if (!$noWget) $scriptSH  .= "\n$WGET $file2 -c $url";
       } else
        $scriptSH .=  "\ncp $uriBase2$path $file2";
 	 } else // for-if
@@ -153,10 +159,9 @@ foreach($lists as $listname) {
 $cacheFolder = "$here/../cache";  // realpath()
 if (! file_exists($cacheFolder)) mkdir($cacheFolder);
 $f = "$cacheFolder/step$STEP-buildDatasets.sql";
+foreach(glob("$here/../step*.sql") as $step)
+  $scriptSH .= "\n\t$PSQL < $step";
 $scriptSH .= "
-  $PSQL < $here/../step1-lib.sql
-  $PSQL < $here/../step2-strut.sql
-  $PSQL < $here/../step3-framework.sql
   $PSQL < $f
   $scriptSH_end
   $PSQL -c \"SELECT * FROM dataset.vmeta_summary\"

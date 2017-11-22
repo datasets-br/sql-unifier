@@ -436,34 +436,52 @@ $wrap$ language SQL IMMUTABLE;
 
 -- Eg. check uniqueness of declared primaryKeys  ...
 
+/**
+ * Validation by asserts. CAUTION: null will validate all!
+ */
 CREATE or replace FUNCTION dataset.validate(int DEFAULT NULL) RETURNS JSONb AS $f$
 DECLARE
     dst RECORD;
-    jj JSONb;
+    list JSONb := '{}'::jsonb;
     q_id int;
-    q_assert boolean;
+    test boolean;
 BEGIN
   FOR dst IN SELECT * FROM dataset.meta WHERE (CASE WHEN $1 IS NOT NULL THEN id=$1 ELSE true END) LOOP
     q_id := dst.id;
-    RAISE NOTICE 'Checking errors for % ... (no message is success)', quote_ident(dst.kx_urn);
+    -- RAISE NOTICE 'Checking errors for % ... (no message is success)', quote_ident(dst.kx_urn);
     CASE dst.jtd
+
       WHEN 'tab-aoa' THEN
         SELECT j INTO jj FROM dataset.big WHERE source=q_id;
-        IF NOT (jsonb_array_length(jj)>0) THEN
-          RAISE NOTICE 'ERROR 1a: first-level array empty';
-        ELSEIF NOT (jsonb_array_length(jj->0)>0) THEN
-          RAISE NOTICE 'ERROR 2a: second-level array empty';
+        test := NOT (jsonb_typeof(jj)='array' AND jsonb_array_length(jj)>0);
+        IF test THEN list := lib.assert_add( test, 1.1, list, 'first-level array empty');
+        ELSE  list := lib.assert_add( NOT (jsonb_array_length(jj->0)>0),
+            1.2, list, 'second-level array empty', true, 'second-level array seems good, by first item of the main array'
+          );
         END IF;
-      WHEN 'tab-aoo' THEN
+
+      WHEN 'tab-1apr' THEN
+        SELECT jsonb_agg(j) INTO jj FROM dataset.big WHERE source=q_id;
+        test := jj IS NULL;
+        IF test THEN list := lib.assert_add( test, 1.1, list, 'empty, minimal is 1 row');
+        ELSE  list := lib.assert_add( NOT (jsonb_array_length(jj->0)>0),
+            1.2, list, 'json-array empty at first row', true, 'first row seems good'
+          );
+        END IF;
+
+      WHEN 'tab-aoo' THEN  -- reapeat all tests when necessary. Better to duplicate code.
         SELECT j INTO jj FROM dataset.big WHERE source=q_id;
-        IF NOT (jsonb_array_length(jj)>0) THEN
-          RAISE NOTICE 'ERROR 1b: first-level array empty';
-        ELSEIF NOT (jsonb_array_length(jj->0)>0) THEN
-          RAISE NOTICE 'ERROR 2b: second-level array empty';
-          END IF;
+        test := NOT (jsonb_typeof(jj)='array' AND jsonb_array_length(jj)>0);
+        IF test THEN list := lib.assert_add( test, 1.1, list, 'first-level array empty');
+        ELSE  list := lib.assert_add( jsonb_typeof(jj->0)!='object'),
+            1.2, list, 'expected an object', true, 'object seems good, by first item of the main array'
+          );
+        END IF;
       ELSE
-        RAISE NOTICE 'ERROR33: not developed asserts for %', quote_ident(dst.jtd);
+        list := lib.assert_add( false, 99, list, 'dataset.validate() CALL INTERNAL ERROR, not developed asserts for '||quote_ident(dst.jtd));
+        -- RAISE NOTICE 'assert call ERROR: not developed asserts for %', quote_ident(dst.jtd);
     END CASE; -- dst.jtd
   END LOOP;
+  RETURN list;
 END
 $f$ language PLpgSQL;
