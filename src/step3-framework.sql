@@ -3,11 +3,6 @@
  * $f$ are functions and $wrap$ are wrap methods (overloading functions).
  */
 
-
- DROP SCHEMA IF EXISTS test123 CASCADE;  -- LIXO!
- CREATE SCHEMA test123;  -- LIXO!
-
-
 -- -- --
 -- -- --
 -- Part 1 - public handlers toolkit, for use with dataset.big selections.

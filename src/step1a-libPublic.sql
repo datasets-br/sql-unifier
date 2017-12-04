@@ -34,6 +34,16 @@ $$ language SQL IMMUTABLE;
 --  pthe remain of the array_pop. Ideal a function that changes array and pop it
 CREATE FUNCTION array_pop_off(ANYARRAY) RETURNS ANYARRAY AS $$ SELECT $1[2:array_length($1,1)]; $$ LANGUAGE sql IMMUTABLE;
 
+CREATE FUNCTION array_distinct(
+      -- From https://stackoverflow.com/a/36727422/287948
+      anyarray, -- input array
+      boolean DEFAULT false -- flag to ignore nulls
+) RETURNS anyarray AS $f$
+      SELECT array_agg(DISTINCT x)
+      FROM unnest($1) t(x)
+      WHERE CASE WHEN $2 THEN x IS NOT NULL ELSE true END;
+$f$ LANGUAGE SQL IMMUTABLE;
+
 /**
  * From my old SwissKnife Lib. For pg 9.3+ try to_regclass()::text ...
  * Check and normalize to array the free-parameter relation-name.
@@ -62,15 +72,7 @@ $wrap$ language SQL IMMUTABLE;
 
 /**
  * Build an array-dictionary to associate indexes. Use f(a)->>'name' to obtain index.
- */
-CREATE or replace FUNCTION array_json_dic(anyarray) RETURNS JSON AS $f$
-  SELECT json_object_agg(a,ordinality)
-  FROM (
-    SELECT a, ordinality   FROM   unnest($1) WITH ORDINALITY a
-  ) t
-$f$ language SQL IMMUTABLE;
-/**
- * Build an array-dictionary to associate indexes. Use f(a)->>'name' to obtain index.
+ * Example: array['a','b','x'] is converted to {"a":1,"b":2,"x":3}
  */
 CREATE or replace FUNCTION array_jsonb_dic(anyarray) RETURNS JSONb AS $f$
   SELECT jsonb_object_agg(a,ordinality)
@@ -78,6 +80,12 @@ CREATE or replace FUNCTION array_jsonb_dic(anyarray) RETURNS JSONb AS $f$
     SELECT a, ordinality   FROM   unnest($1) WITH ORDINALITY a
   ) t
 $f$ language SQL IMMUTABLE;
+
+
+------
+--  JSON builder to aggregate into an object, like jsonb_object_agg(), but using existent pairs
+-- For olds jsonb_object_cat(jsonb,jsonb) and jsonb_agg_object_cat, see bag.agg()
+
 
 -- -- -- -- --
 -- DISK-USAGE
