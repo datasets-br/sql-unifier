@@ -167,12 +167,17 @@ CREATE VIEW dataset.big_full AS
 ;
 
 CREATE VIEW dataset.vmeta_summary_aux AS
-  SELECT m.id, '('|| dataset.ns_id(m.namespace)||')'|| m.kx_urn as urn,  array_to_string(dataset.jget_pks(m.info),'/') as pkey,
+  SELECT m.id, CASE WHEN t2.ns_id>0 THEN '('|| t2.ns_id ||')' ELSE '' END || m.kx_urn as urn,
+		array_to_string(dataset.jget_pks(m.info),'/') as pkey,
 	  m.info->>'lang' as lang,  m.jtd,
     jsonb_array_length(m.info#>'{schema,fields}') as n_cols, t.n_rows
     -- jsonb_pretty(info) as show_info
   FROM dataset.meta m,
-	     LATERAL  (SELECT sum(jsonb_array_length(j)) as n_rows FROM dataset.big WHERE source=m.id AND m.jtd IN ('tab-aoa','tab-aoo')) t
+	     LATERAL  (
+				 SELECT sum(jsonb_array_length(j)) as n_rows
+			 	 FROM dataset.big WHERE source=m.id AND m.jtd IN ('tab-aoa','tab-aoo')
+			 ) t,
+			 LATERAL (SElECT dataset.ns_id(m.namespace)) t2(ns_id)
 	ORDER BY 2
 ;
 CREATE VIEW dataset.vmeta_summary AS

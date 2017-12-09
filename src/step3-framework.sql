@@ -437,6 +437,7 @@ $wrap$ language SQL IMMUTABLE;
 CREATE or replace FUNCTION dataset.validate(int DEFAULT NULL) RETURNS JSONb AS $f$
 DECLARE
     dst RECORD;
+    jj JSONb;
     list JSONb := '{}'::jsonb;
     q_id int;
     test boolean;

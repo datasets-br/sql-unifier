@@ -191,22 +191,11 @@ $f$ language SQL IMMUTABLE;
 CREATE or replace FUNCTION lib.resp_error_add(
   code int,
   msg text DEFAULT NULL,
-  data JSONb DEFAULT NULL,
-  data_isbefore DEFAULT false -- under construction, to change object-names.
+  data JSONb DEFAULT NULL
+  --, data_isbefore DEFAULT false -- under construction, to change object-names.
 ) RETURNS JSONb AS $f$
   SELECT CASE
       WHEN $3 IS NULL OR jsonb_typeof($3)='null' THEN x
-      ELSE jsonb_build_object('data',$3) || x
-    END
-  FROM (SELECT jsonb_build_object('code',$1, 'message',$2)) t(x)
-$f$ language SQL IMMUTABLE;
-
-CREATE or replace FUNCTION lib.resp_add(
-  p_data JSONb,
-  p_list JSONb DEFAULT NULL
-) RETURNS JSONb AS $f$
-  SELECT CASE
-      WHEN $1 IS NULL OR jsonb_typeof($3)='null' THEN jsonb_build_object('response',$1)
       ELSE jsonb_build_object('data',$3) || x
     END
   FROM (SELECT jsonb_build_object('code',$1, 'message',$2)) t(x)

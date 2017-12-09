@@ -32,9 +32,9 @@ CREATE or replace FUNCTION jsonb_array_totext(JSONb) RETURNS text[] AS $$
 $$ language SQL IMMUTABLE;
 
 --  pthe remain of the array_pop. Ideal a function that changes array and pop it
-CREATE FUNCTION array_pop_off(ANYARRAY) RETURNS ANYARRAY AS $$ SELECT $1[2:array_length($1,1)]; $$ LANGUAGE sql IMMUTABLE;
+CREATE or replace FUNCTION array_pop_off(ANYARRAY) RETURNS ANYARRAY AS $$ SELECT $1[2:array_length($1,1)]; $$ LANGUAGE sql IMMUTABLE;
 
-CREATE FUNCTION array_distinct(
+CREATE or replace FUNCTION array_distinct(
       -- From https://stackoverflow.com/a/36727422/287948
       anyarray, -- input array
       boolean DEFAULT false -- flag to ignore nulls
@@ -91,7 +91,7 @@ $f$ language SQL IMMUTABLE;
 -- DISK-USAGE
 
 -- DANGER, not reliable!! Check if table_size make sense!
-CREATE VIEW pgvw_class_usage AS  --  see https://wiki.postgresql.org/wiki/Disk_Usage
+CREATE or replace VIEW pgvw_class_usage AS  --  see https://wiki.postgresql.org/wiki/Disk_Usage
   SELECT *, pg_size_pretty(table_bytes) AS table_size
   FROM (
 	SELECT nspname , relname, total_bytes
@@ -109,7 +109,7 @@ CREATE VIEW pgvw_class_usage AS  --  see https://wiki.postgresql.org/wiki/Disk_U
   ORDER BY 1,2
 ; -- eg. SELECT * FROM pgvw_class_usage WHERE relname='big' AND nspname='dataset';
 
-CREATE VIEW pgvw_nsclass_usage AS
+CREATE or replace VIEW pgvw_nsclass_usage AS
   SELECT *, pg_size_pretty(table_bytes) as table_size
   FROM (
     SELECT nspname,
