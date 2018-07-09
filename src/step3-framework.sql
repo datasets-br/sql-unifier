@@ -379,7 +379,6 @@ BEGIN
 			s := CASE WHEN i=1 THEN 'VIEW' ELSE 'FOREIGN TABLE' END;
 			EXECUTE format('DROP %s %s CASCADE;', s, p[i]);
 	END IF; END LOOP;
-
   s:= format(
 		'SELECT %s FROM (SELECT jsonb_array_elements(j) FROM dataset.big WHERE source=%s) t(j)',
     p[3], $1
@@ -389,13 +388,11 @@ BEGIN
 		'CREATE VIEW %s AS %s',
     p[1], CASE WHEN pk[1]>'' THEN 'SELECT * FROM ('||s||') t2 ORDER BY '||pk[2] ELSE s END
 	);
-
 	IF p_delimiter='' OR p_delimiter IS NULL THEN p_delimiter=','; END IF;
 	EXECUTE format(
 		'CREATE FOREIGN TABLE %s (%s) SERVER csv_files OPTIONS (filename %L, format %L, delimiter %L, header %L)',
 		 p[2],  p[4], p_filename, 'csv', p_delimiter, p_useHeader::text
 	);
-
 	IF p_intoSelect='' OR p_intoSelect IS NULL THEN
     --no key s:= CASE WHEN pk[1]='' THEN '' ELSE 'ORDER BY '||pk[2] END;
 		p_intoSelect := format(
@@ -406,7 +403,6 @@ BEGIN
 	END IF;
 	-- no key s:= CASE WHEN pk[1]='' THEN '' ELSE ',key' END;
 	EXECUTE format( 'INSERT INTO dataset.big(source,j)  %s', p_intoSelect );
-
 	RETURN format('ok all created for %s (id %s)', p[1], $1);
 END
 $f$ language PLpgSQL;
@@ -415,7 +411,7 @@ CREATE or replace FUNCTION dataset.create(
 	p_urn text, text DEFAULT '', boolean DEFAULT true, text DEFAULT ',', text  DEFAULT ''
 ) RETURNS text AS $wrap$
 	SELECT dataset.create( dataset.meta_id($1), $2, $3, $4, $5 )
-$wrap$ language SQL IMMUTABLE;
+$wrap$ language SQL;
 
 -- -- --
 -- -- --

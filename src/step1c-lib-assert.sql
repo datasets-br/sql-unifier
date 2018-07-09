@@ -86,3 +86,26 @@ CREATE or replace FUNCTION lib.assert_show(
     FROM lib.assert_expand_to_table(p_list,p_show_all) a
   ) t
 $f$ language SQL IMMUTABLE;
+
+--------
+
+CREATE or replace FUNCTION benchmark_execfunc(
+  -- Tested at http://rextester.com/ERW64272
+  -- Example SELECT benchmark_execfunc('test(22.2)',990000);
+  p_func  text, -- the function call "f(params)"
+  p_loops int DEFAULT 10000,    -- number of loops
+  p_micro boolean DEFAULT true -- to return as µs instead ms
+) RETURNS float AS $f$
+    DECLARE
+      res  json;
+    BEGIN
+     EXECUTE format(
+       'EXPLAIN (FORMAT JSON,ANALYZE) SELECT %s FROM generate_series(1,%L)',
+       p_func,
+       p_loops
+     ) INTO res;
+     res := res->0;
+     RETURN CASE WHEN p_micro THEN 1000.0 ELSE 1 END *
+            (res->>'Execution Time')::float / $2::float;
+    END;
+$f$ language plpgsql;

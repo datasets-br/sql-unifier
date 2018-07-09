@@ -43,6 +43,7 @@ INSERT INTO dataset.jtd (name,description,info) VALUES  -- main and examples
 	,('tab-1apr','Tabular, distributed in many SQL rows, one JSON-array per SQL-row.',NULL::jsonb)
 	,('objs-free','Objects, free-structure, all dataset in only one JSON set of objects. Non tabular (ex. free taxonomy)',NULL::jsonb)
 	,('json-ld','','{"about":""}'::jsonb)
+	,('bag','JSON bags, simple key-value pairs, and bag-operations.','{"about":"https://github.com/datasets-br/sql-json-bags"}'::jsonb)
 	,('tab-aoo','JSON Tabular Array of Object-rows, one SQL field with all rows. Please avoid! prefer tab-aoa.','{"about":"http://frictionlessdata.io/specs/tabular-data-resource/#json-tabular-data"}'::jsonb)
 	,('tab-1opr','Tabular, distributed in many SQL rows, each row with an Object. Please avoid! prefer tab-1apr.',NULL::jsonb)
 	,('tab-aoa-trans1','A tab-aoa with Transactional-expenditure-data-v1 (see URL) semantics and its minimal structure.','{"about":"http://frictionlessdata.io/specs/fiscal-data-package/#transactional-expenditure-data"}'::jsonb)
